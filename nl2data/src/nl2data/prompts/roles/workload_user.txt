@@ -1,0 +1,10 @@
+LogicalIR:
+
+{LOGICAL_JSON}
+
+RequirementIR (for workload hints):
+
+{REQUIREMENT_JSON}
+
+Design workload specifications as JSON following the structure described in the system prompt.
+

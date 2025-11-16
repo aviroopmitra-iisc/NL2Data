@@ -1,0 +1,15 @@
+A retail company operates an e-commerce platform with the following structure:
+
+The company manages multiple products, each with a Product ID, Name, Category, and Price.
+Products are sold through multiple orders. Each order has an Order ID, Customer ID, Order Date, and Total Amount.
+Customers are identified by Customer ID, Name, Email, and Registration Date.
+Each order contains multiple order items, with Order ID, Product ID, Quantity, and Unit Price.
+
+The system should support:
+- 1 million orders
+- 100,000 products
+- 500,000 customers
+- Product IDs should follow a Zipf distribution (popular products are ordered more frequently)
+- Orders should show seasonal patterns (higher sales in December and November)
+- Customer registration dates should be uniformly distributed over the past 3 years
+

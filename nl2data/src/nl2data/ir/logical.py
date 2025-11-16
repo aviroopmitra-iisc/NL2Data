@@ -1,0 +1,57 @@
+"""LogicalIR model for relational schema design."""
+
+from typing import List, Optional, Dict, Literal
+from pydantic import BaseModel, Field
+from .constraint_ir import ConstraintSpec
+
+SQLType = Literal[
+    "INT32",
+    "INT64",
+    "FLOAT32",
+    "FLOAT64",
+    "TEXT",
+    "DATE",
+    "DATETIME",
+    "BOOL",
+]
+
+
+class ColumnSpec(BaseModel):
+    """Specification for a database column."""
+
+    name: str
+    sql_type: SQLType
+    nullable: bool = True
+    unique: bool = False
+    role: Optional[
+        Literal["primary_key", "foreign_key", "measure", "attribute"]
+    ] = None
+    references: Optional[str] = None  # "dim_product.product_id"
+
+
+class ForeignKeySpec(BaseModel):
+    """Specification for a foreign key constraint."""
+
+    column: str
+    ref_table: str
+    ref_column: str
+
+
+class TableSpec(BaseModel):
+    """Specification for a database table."""
+
+    name: str
+    kind: Optional[Literal["fact", "dimension"]] = None
+    row_count: Optional[int] = None
+    columns: List[ColumnSpec]
+    primary_key: List[str] = Field(default_factory=list)
+    foreign_keys: List[ForeignKeySpec] = Field(default_factory=list)
+
+
+class LogicalIR(BaseModel):
+    """Logical relational schema model."""
+
+    tables: Dict[str, TableSpec]
+    constraints: ConstraintSpec = Field(default_factory=ConstraintSpec)
+    schema_mode: Literal["oltp", "star", "snowflake"] = "star"
+

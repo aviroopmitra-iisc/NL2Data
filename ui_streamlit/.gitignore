@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# Streamlit
+.streamlit/
+
+# Generated data
+generated_data/
+
+# OS
+.DS_Store
+Thumbs.db
+

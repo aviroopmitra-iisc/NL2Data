@@ -1,0 +1,10 @@
+ConceptualIR:
+
+{CONCEPTUAL_JSON}
+
+RequirementIR (for hints):
+
+{REQUIREMENT_JSON}
+
+Design a logical relational schema as JSON following the structure described in the system prompt.
+

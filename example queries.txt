@@ -1,0 +1,191 @@
+1.
+
+Generate a web clickstream dataset for a mid-sized e-commerce site with one session-level fact table and four dimension tables (user, device, referrer, page). The fact table should contain at least 30 million sessions over a 90-day period. Session lengths must follow a heavy-tailed distribution where most sessions are short but a small fraction have more than 100 events. Include a “bot_detection_score” feature where roughly 5–8% of sessions are high-confidence bots; these sessions should have abnormally high pageview counts and very short inter-event times. Model a sales funnel with the stages homepage → category → product → add_to_cart → checkout → purchase, and target an overall funnel conversion rate of about 2.5%. Traffic should show strong weekly seasonality (weekends at about 1.5× weekday volume) and diurnal patterns with peaks during local evening hours. The dataset should be suitable for testing window functions, sessionization logic, multi-step funnel queries, and skewed group-by workloads on user_id and product_id.
+
+2.
+
+Create an IoT telemetry dataset for 10,000 industrial sensors deployed across 100 plants. There should be one high-frequency fact table called sensor_reading with at least 200 million rows over a 30-day period, plus dimension tables for sensors, plants, and sensor types. Sensor readings (temperature, vibration, current) should mostly remain within normal operating bands that differ by sensor type, with rare anomalies (0.1–0.5% of readings) modeled as spikes, drifts, or sudden step changes. Inject 3–5 “cascading failure” incidents in which a single plant experiences coordinated anomalies across many sensors in a narrow time window, and each incident is preceded by subtle early-warning deviations. Timestamps should be approximately uniform over time but with random missing intervals per sensor to simulate connectivity issues. Include synthetic maintenance events that reset some sensors’ behavior. The data should stress time-series joins, anomaly detection queries, and “before/after incident” window aggregations.
+
+3.
+
+Generate a financial transactions dataset with a large transaction fact table (at least 50 million rows) and dimension tables for customers, merchants, cards, and geography. Legitimate transactions should form the majority, with card-level spending showing strong weekly seasonality and pay-day spikes around the 1st and 15th of each month. Inject multiple fraud patterns: low-value test transactions followed by one or more high-value purchases; coordinated fraud rings where many cards transact with the same merchant in a short time window; and location anomalies where the same card has transactions in geographically distant locations within an impossible travel time. Label a small fraction of transactions as “confirmed_fraud”, while leaving many suspicious patterns unlabeled. Transaction amounts should follow a log-normal distribution with a heavy tail, and merchant categories like electronics and travel should be over-represented among high-value transactions. The dataset should be useful for graph-based fraud detection queries, geo-temporal anomaly detection, and group-by workloads heavily skewed on merchant_id.
+
+4.
+
+Create a synthetic healthcare dataset modeling longitudinal patient records. Include an encounter fact table (visits and admissions) with roughly 10 million rows, plus dimensions for patient, provider, facility, diagnosis, procedure, and medication. Patients should follow different care pathways for chronic conditions such as diabetes and hypertension, with diagnosis codes appearing before related medications and procedures in plausible temporal sequences. Age distribution should be skewed toward older patients, and comorbid conditions should cluster realistically (for example, diabetes and hypertension often co-occur). Introduce a policy change at a specific date that shifts treatment protocols, causing different medication and procedure patterns after that date. Include re-admission patterns where some patients are re-admitted within 30 days with related diagnoses. The dataset should be designed to stress complex cohort definitions, survival and time-to-event analyses, and joins across many dimensions with highly skewed diagnosis and procedure codes.
+
+5.
+
+Generate a ride-sharing dataset with a trips fact table containing at least 40 million trips and dimension tables for rider, driver, geographic zone, and vehicle type. Trip durations and distances should follow realistic urban distributions, with different patterns for rush hours, nights, and off-peak times. Implement spatial–temporal surge pricing: certain zones at specific times should have a surge multiplier applied, especially around simulated events such as concerts, sports games, and public holidays. Model driver churn: new drivers join over time, some drivers become inactive after sequences of low earnings or long idle periods. Cancellation rates should be higher during adverse conditions such as heavy rain, very high surge, or long estimated arrival times. The dataset should stress spatiotemporal joins, group-by aggregations by zone and time-of-day, and highly skewed load in popular zones during surge events.
+
+6.
+
+Create a dataset for a recommender-style retail system that combines transactional sales and interaction logs. Include a sales fact table, a product catalog dimension, a customer dimension, and an events log for product impressions and clicks. Product popularity should follow a strong Zipf distribution, where a small fraction of SKUs generate most of the revenue and traffic. Inject several marketing campaigns introducing new products: these cold-start items should receive heavy impression volume initially, with uncertain and noisy conversion rates. Customers should belong to segments with different preference profiles and click-through behaviors, such as bargain hunters, brand loyal customers, and novelty seekers. Include a recommended_product_id in the events log, where recommendations are sometimes noisy or mis-targeted, especially for certain segments. Event timestamps should allow reconstruction of top-N product rankings by day and by category. The dataset should stress joins between logs and dimensions, plus group-by aggregations on customer_id and product_id under heavy skew.
+
+7.
+
+Generate a supply chain dataset with multiple interconnected processes. Create fact tables for purchase orders, shipments, inventory snapshots, and customer orders, and dimension tables for products, suppliers, warehouses, and regions. Model multi-stage lead times from supplier to port to central distribution center to regional warehouse to final customer, with variability driven by route, supplier reliability, and season. Inject disruption scenarios: for example, simulate a port closure for a week that causes backlogs and delayed arrivals, and simulate supplier quality issues that result in quarantined inventory and rework orders. Demand should be seasonal for some products and promotion-driven for others, leading to spikes in specific periods. Backorders and stockouts should occur in realistically bursty patterns for popular SKUs. The dataset should stress complex joins between multiple fact tables and cumulative inventory calculations over time.
+
+8.
+
+Create an education platform dataset representing student learning trajectories. There should be an events fact table capturing student–content interactions (view, attempt, correct, incorrect, hint_requested), and dimensions for student, course, content item, and instructor. Students should exhibit different learning profiles: some improve quickly over time, others plateau, and a few regress. Each content item has a difficulty level, and the probability of a correct attempt depends on a latent student skill level, item difficulty, and some noise. Introduce intervention events: when a student has repeated failures on similar items, they receive hints or remedial content, which should measurably improve their future success probability. Time gaps between sessions should correlate with performance, with long idle periods associated with lower accuracy on subsequent attempts. The dataset should support cohort analysis, mastery estimation, and sequence-based queries over time-ordered student activity.
+
+9.
+
+Generate a multi-tenant SaaS metrics dataset. Include a metric fact table with fields (tenant_id, metric_name, timestamp, value) and at least 100 million rows, plus dimension tables for tenant, region, and plan. Most tenants should have low traffic and low metric volume, while a few large tenants (“whales”) generate very high traffic following a Zipf-like distribution across tenant_id. Shared infrastructure issues, such as a database cluster degradation in a particular region, should cause correlated latency spikes and error-rate increases across multiple tenants in that region but not globally. Add tenant-specific incidents, such as misconfigurations or bad deployments, that affect only one tenant’s metrics. Metric types should include request_rate, error_rate, latency_p50, latency_p95, cpu_usage, and memory_usage. The dataset should stress multi-tenant group-by aggregations, time-window analytics, and detection of shared versus isolated incidents.
+
+10.
+
+Create a CRM and marketing attribution dataset that models multi-touch customer journeys. Include a leads or contacts fact table, an interactions fact table capturing marketing touches (email open, email click, ad impression, ad click, website visit, sales call), and dimensions for channel, campaign, creative, and sales representative. Customer journeys should be multi-step sequences that may eventually lead to an opportunity being created and a deal being closed, with widely varying time lags between first touch and closing. Some deals should close after very few touches, while others require long nurture sequences across multiple channels. Different channels should have distinct conversion funnels and latency characteristics. Introduce realistic data quality issues such as multiple leads from the same company, duplicate contacts, and inconsistent campaign codes. The dataset should stress first-touch, last-touch, and multi-touch attribution queries, deduplication logic, and complex joins across events, leads, and opportunities.
+
+11.
+
+Generate a ride-sharing trip dataset for a large metropolitan area that explicitly models multiple derived columns. Include:
+
+* A trips fact table with at least 50 million rows and dimensions for rider, driver, zone, vehicle, and tariff_plan.
+
+* For each trip, generate base columns: `start_time`, `pickup_zone_id`, `dropoff_zone_id`, `duration_minutes`, `distance_km`, `base_fare_per_km`, `surge_multiplier`, `booking_fee`, and `driver_payout_ratio`.
+
+* Define the following derived columns (they must be computed, not sampled):
+
+  * `end_time = start_time + duration_minutes (in minutes)`
+
+  * `distance_miles = distance_km * 0.621371`
+
+  * `gross_fare = distance_km * base_fare_per_km * surge_multiplier + booking_fee`
+
+  * `tax_amount = gross_fare * tax_rate`, where `tax_rate` depends on pickup_zone_id (e.g., downtown 12%, suburbs 8%)
+
+  * `discount_amount = gross_fare * promotional_discount_rate`, where promotional_discount_rate depends on tariff_plan and time of day
+
+  * `net_fare = gross_fare - discount_amount + tax_amount`
+
+  * `driver_earnings = net_fare * driver_payout_ratio`
+
+  * `platform_fee = net_fare - driver_earnings`
+
+* Use realistic business rules in the distributions so that:
+
+  * Longer trips tend to have higher surge_multiplier in peak hours.
+
+  * Some tariff plans enforce a minimum `gross_fare`, which should be applied via a derived max/clip expression, not by sampling.
+
+* The dataset should be good for testing that all derived expressions (time arithmetic, chained numeric expressions, conditional clip/min/max logic) are applied correctly on large chunks.
+
+12.
+
+Create a large-scale e-commerce order dataset that heavily relies on derived monetary and time fields. Include:
+
+* One orders fact table (≥ 30 million rows) and dimensions for customer, product, store, promotion, and tax_region.
+
+* Base columns per order line: `order_datetime`, `store_id`, `product_id`, `unit_price`, `quantity`, `discount_percent`, `tax_region_id`, `shipping_method`, `shipping_distance_km`, and `handling_fee`.
+
+* Define derived columns:
+
+  * `line_subtotal = unit_price * quantity`
+
+  * `discount_amount = line_subtotal * discount_percent`
+
+  * `tax_rate = tax_region_base_rate + additional_rate_for_product_category` (the additional rate depends on the product category, not sampled directly; it should be encoded in the IR and applied as a derived expression that looks up a per-category rate column from the product dimension or a pre-joined view)
+
+  * `tax_amount = (line_subtotal - discount_amount) * tax_rate`
+
+  * `shipping_cost = base_shipping_fee + per_km_rate * shipping_distance_km`, with per_km_rate depending on shipping_method
+
+  * `line_total = line_subtotal - discount_amount + tax_amount + shipping_cost + handling_fee`
+
+  * `estimated_delivery_datetime = order_datetime + shipping_lead_time_days (converted into a timedelta)`
+
+  * `delivery_sla_breached = 1 if actual_delivery_datetime > promised_delivery_datetime else 0` (use a derived boolean expression)
+
+* Include at least one scenario where tax rules change mid-year (policy change), so tax_rate must be derived from both tax_region_id and order_datetime.
+
+* This dataset should stress-test chained arithmetic, nested conditionals, date arithmetic, and boolean expressions in derived columns.
+
+13.
+
+Generate an energy consumption dataset for residential customers with multiple temporal derived features. Include:
+
+* A consumption fact table with hourly records for at least 100,000 households over one full year (≈ 876M rows), and dimensions for household, tariff_plan, and region.
+
+* Base columns per record: `timestamp`, `household_id`, `region_id`, `tariff_plan_id`, `consumption_kwh`, `outdoor_temp_c`, and `dynamic_price_per_kwh`.
+
+* Derived columns should include:
+
+  * `billing_day = date part of timestamp`
+
+  * `is_peak_hour = 1 if hour_of_day in peak set else 0`
+
+  * `is_weekend = 1 if day_of_week is Saturday or Sunday else 0`
+
+  * `baseline_price_per_kwh = function of tariff_plan_id` (taken from a dimension table, then propagated via a join and used in a derived expression)
+
+  * `price_multiplier = dynamic_price_per_kwh / baseline_price_per_kwh`
+
+  * `cost_before_rebate = consumption_kwh * dynamic_price_per_kwh`
+
+  * `rebate_amount = where(consumption_kwh > threshold, cost_before_rebate * rebate_rate, 0)` where threshold and rebate_rate depend on tariff_plan_id
+
+  * `final_cost = cost_before_rebate - rebate_amount`
+
+  * `heating_degree_hours = where(outdoor_temp_c < 18, 18 - outdoor_temp_c, 0)`
+
+  * `cooling_degree_hours = where(outdoor_temp_c > 24, outdoor_temp_c - 24, 0)`
+
+* Make sure the IR specifies these derived columns in terms of core columns, with conditional logic expressed via a where/if-else pattern, so you can verify that your derived engine handles numeric and boolean combinations at large scale.
+
+14.
+
+Create a financial transactions dataset for credit cards with emphasis on fraud-related derived features. Include:
+
+* A transaction fact table with at least 80 million rows and dimensions for card, merchant, MCC (merchant category code), country, and risk_profile.
+
+* Base columns per transaction: `transaction_id`, `card_id`, `merchant_id`, `mcc_id`, `transaction_datetime`, `amount_usd`, `exchange_rate`, `country_id`, `card_home_country_id`, `risk_profile_id`, and `is_chip_transaction`.
+
+* Define the following derived columns:
+
+  * `amount_local_currency = amount_usd * exchange_rate`
+
+  * `is_cross_border = 1 if country_id != card_home_country_id else 0`
+
+  * `days_since_previous_txn = difference in days between transaction_datetime and previous transaction_datetime for the same card_id` (this can be approximated by precomputing per-card lag timestamps and exposing them as a column, then using a derived subtraction expression; the IR should treat the difference as derived, not sampled)
+
+  * `avg_amount_last_7d = rolling average of amount_usd for the last 7 days for the same card_id` (similarly approximated via a pre-stage or via a simplified expression; the NL description should state that it is logically derived, even if your implementation uses a precomputed helper column)
+
+  * `velocity_score = (number_of_transactions_last_24h / 10.0) + (total_amount_last_24h / 1000.0)`
+
+  * `high_risk_mcc_flag = 1 if mcc_id is in a high-risk set else 0`
+
+  * `fraud_risk_score = base_risk_score + 0.5 * is_cross_border + 0.7 * high_risk_mcc_flag + 0.3 * (amount_usd > high_amount_threshold)`
+
+* This dataset should focus on complex boolean and numeric derived expressions where multiple underlying signals are combined, which is ideal to stress-test your expression engine's handling of multiple operators and nested conditions.
+
+15.
+
+Generate a SaaS metrics dataset for a multi-tenant web application with heavy use of derived SLAs and aggregates. Include:
+
+* A metrics fact table with fields `(timestamp, tenant_id, cluster_id, metric_name, value)` and at least 150 million rows, plus dimensions for tenant, cluster, region, and plan_tier.
+
+* Restrict metric_name to a small set: `request_rate`, `error_rate`, `latency_p50`, `latency_p95`, `cpu_usage`, `memory_usage`.
+
+* For each (tenant_id, timestamp) combination, create derived "virtual metrics" as separate columns:
+
+  * `error_rate_percent = error_rate * 100.0`
+
+  * `latency_spread = latency_p95 - latency_p50`
+
+  * `slo_latency_threshold_ms = function of plan_tier` (brought in via a dimension-based derived expression)
+
+  * `slo_latency_breached = 1 if latency_p95 > slo_latency_threshold_ms else 0`
+
+  * `cpu_headroom = 100.0 - cpu_usage`
+
+  * `is_overloaded = 1 if (cpu_usage > 85 and memory_usage > 80) else 0`
+
+* Also define a per-tenant derived indicator:
+
+  * `chronic_slo_violator = 1 if fraction_of_intervals_with_slo_latency_breached_over_last_7d > 0.05 else 0`
+
+    where `fraction_of_intervals_with_slo_latency_breached_over_last_7d` is conceptually derived from the time series of the same tenant.
+
+* The IR should contain these derived expressions in terms of base metrics and dimension-driven thresholds, exercising arithmetic, comparison, boolean combination, and function-based derivation.

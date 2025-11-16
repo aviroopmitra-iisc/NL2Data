@@ -1,0 +1,10 @@
+LogicalIR:
+
+{LOGICAL_JSON}
+
+RequirementIR (for distribution hints):
+
+{REQUIREMENT_JSON}
+
+Design generation specifications for all columns as JSON following the structure described in the system prompt.
+

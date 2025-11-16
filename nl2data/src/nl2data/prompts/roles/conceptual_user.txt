@@ -1,0 +1,6 @@
+RequirementIR:
+
+{REQUIREMENT_JSON}
+
+Design a conceptual ER model as JSON following the structure described in the system prompt.
+

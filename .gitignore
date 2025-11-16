@@ -1,0 +1,168 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv
+env.bak/
+venv.bak/
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+# Allow .env.example for reference (but ignore all other .env files)
+!.env.example
+.envrc
+
+# IDE & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Cursor
+.cursorignore
+
+# Output & Generated Data
+# All output directories (these contain generated data that shouldn't be committed)
+output/
+test_output/
+logs/
+# Generated data files in output directories
+**/output/**/*.csv
+**/output/**/*.parquet
+**/output/**/dataset_ir.json
+**/test_output/**/*.csv
+**/test_output/**/*.parquet
+**/test_output/**/dataset_ir.json
+# Log files
+*.log
+# JSONL files (often contain generated or sensitive data)
+*.jsonl
+
+# UI Streamlit specific
+ui_streamlit/generated_data/
+ui_streamlit/output/
+.streamlit/
+
+# Test Coverage
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+.hypothesis/
+*.cover
+*.py,cover
+.hypothesis/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# Large files (uncomment if needed)
+# *.pdf
+# *.zip
+# *.tar.gz
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# DuckDB
+*.duckdb
+*.duckdb.wal
+
+# Annotation files (if they contain sensitive data)
+# annotation.jsonl
+

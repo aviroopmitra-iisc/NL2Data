@@ -1,0 +1,6 @@
+Here is the user's natural language description:
+
+{NARRATIVE}
+
+Extract the RequirementIR JSON as described in the system prompt.
+
