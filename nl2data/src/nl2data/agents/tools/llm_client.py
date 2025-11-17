@@ -92,10 +92,11 @@ def chat(messages: List[Dict[str, str]]) -> str:
     elif _forced_provider == "gemini":
         return _chat_gemini(messages)
 
-    # Otherwise, use priority order (OpenAI > local > Gemini)
+    # Otherwise, use priority order (OpenAI > Gemini > Local)
+    # Try each provider and fall back if it fails
     use_openai = settings.openai_api_key and settings.model_name
-    use_local = settings.llm_url and settings.model
     use_gemini = settings.gemini_api_key and settings.gemini_model
+    use_local = settings.llm_url and settings.model
 
     if not use_openai and not use_local and not use_gemini:
         raise ValueError(
@@ -103,12 +104,35 @@ def chat(messages: List[Dict[str, str]]) -> str:
             "LLM_URL/MODEL, or GEMINI_API_KEY/GEMINI_MODEL in .env"
         )
 
+    # Try OpenAI first (if configured)
     if use_openai:
-        return _chat_openai(messages)
-    elif use_local:
-        return _chat_local(messages)
-    else:
-        return _chat_gemini(messages)
+        try:
+            return _chat_openai(messages)
+        except Exception as e:
+            logger.warning(f"OpenAI call failed: {e}. Falling back to next provider...")
+            # Fall through to try next provider
+    
+    # Try Gemini second (if configured)
+    if use_gemini:
+        try:
+            return _chat_gemini(messages)
+        except Exception as e:
+            logger.warning(f"Gemini call failed: {e}. Falling back to next provider...")
+            # Fall through to try next provider
+    
+    # Try Local LLM last (if configured)
+    if use_local:
+        try:
+            return _chat_local(messages)
+        except Exception as e:
+            logger.error(f"Local LLM call failed: {e}")
+            raise
+    
+    # If we get here, all configured providers failed
+    raise RuntimeError(
+        "All configured LLM providers failed. "
+        "Please check your API keys and network connection."
+    )
 
 
 def _chat_gemini(messages: List[Dict[str, str]]) -> str:

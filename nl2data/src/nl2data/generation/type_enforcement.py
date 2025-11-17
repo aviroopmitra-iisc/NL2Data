@@ -98,7 +98,7 @@ def enforce_column_type(
     Returns:
         Array with correct type
     """
-    if sql_type in ("INT32", "INT64"):
+    if sql_type == "INT":
         # Cast to integer (handles float IDs from uniform distributions)
         if arr.dtype.kind == 'f':  # float
             return arr.astype(np.int64)
@@ -107,7 +107,7 @@ def enforce_column_type(
             return _extract_datetime_to_int(arr, col_name)
         return arr.astype(np.int64)
     
-    elif sql_type in ("FLOAT32", "FLOAT64"):
+    elif sql_type == "FLOAT":
         if arr.dtype.kind == 'M':  # datetime64
             # If seasonal was used on a FLOAT column, extract numeric value
             return _extract_datetime_to_float(arr, col_name, rng)

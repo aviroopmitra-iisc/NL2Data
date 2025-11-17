@@ -16,6 +16,10 @@ You must return a JSON object matching this structure:
 Key guidelines:
 - Extract the domain/business area (e.g., "retail", "healthcare", "finance")
 - Preserve the narrative description
+- IMPORTANT: Derived Column Preservation
+  - If the description mentions computed or derived columns (e.g., "X = A * B", "X is computed as...", "X depends on...", "X must be computed"), ensure these are preserved VERBATIM in the narrative field
+  - Derived columns are critical for the pipeline - do not summarize or omit them
+  - Examples to preserve: "billing_day = date part of timestamp", "gross_fare = distance_km * base_fare_per_km * surge_multiplier + booking_fee"
 - Identify hints about table names or structure
 - Extract scale hints (row counts for specific tables)
 - Identify distribution hints (e.g., "product_id follows Zipf distribution", "sales are seasonal")

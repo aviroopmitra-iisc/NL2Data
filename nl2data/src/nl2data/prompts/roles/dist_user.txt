@@ -6,5 +6,49 @@ RequirementIR (for distribution hints):
 
 {REQUIREMENT_JSON}
 
-Design generation specifications for all columns as JSON following the structure described in the system prompt.
+---
 
+⚠️⚠️⚠️ CRITICAL: TABLE NAMES ⚠️⚠️⚠️
+
+Valid table names (you MUST use ONLY these exact names - NO EXCEPTIONS):
+{VALID_TABLE_NAMES}
+
+⚠️ WARNING: DO NOT use table names from:
+- Previous queries you may have seen
+- Examples in documentation
+- Other domains (e.g., e-commerce, healthcare, finance)
+- Templates or patterns
+
+You MUST use ONLY the table names listed above. If you use any other table names, your response will be rejected.
+
+Tables and their columns:
+{TABLE_LIST}
+
+Total columns to generate specs for: {TOTAL_COLUMNS}
+
+---
+
+IMPORTANT REQUIREMENTS:
+
+1. **Table Names (CRITICAL)**: 
+   - You MUST use ONLY the exact table names listed in "Valid table names" above
+   - DO NOT use table names from other domains, examples, templates, or previous queries
+   - Every "table" field in your generation specs must match one of the valid table names exactly
+   - Before returning, double-check that every "table" field in your JSON matches one of the valid names
+   - Common mistake: Using "fact_orders", "dim_customer", "fact_sales" when the valid names are different
+
+2. **Completeness**: You MUST generate specs for ALL {TOTAL_COLUMNS} columns listed above. Count them before returning to ensure completeness.
+
+3. **Before returning**, verify:
+   - All table names match exactly (no typos, no domain mismatches)
+   - All {TOTAL_COLUMNS} columns have generation specifications
+   - No self-references in derived columns
+
+4. **Derived Column Dependencies**: When creating derived columns:
+   - You can reference columns from the same table directly (e.g., "unit_price * quantity")
+   - You can reference columns from dimension tables that are joined via foreign keys (e.g., "dynamic_price / baseline_price" where baseline_price is in dim_tariff_plan)
+   - You CANNOT reference columns from other fact tables (cross-fact-table references not supported)
+   - You CANNOT use window functions like LAG() or LEAD() (temporal dependencies requiring previous rows not supported)
+   - For temporal dependencies, use helper columns or avoid patterns that need previous row values
+
+Design generation specifications for all columns as JSON following the structure described in the system prompt.

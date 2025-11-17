@@ -3,16 +3,17 @@
 import ast
 import numpy as np
 import pandas as pd
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from .derived_program import DerivedProgram
 
 
-def build_env(df: pd.DataFrame) -> Dict[str, Any]:
+def build_env(df: pd.DataFrame, rng: Optional[np.random.Generator] = None) -> Dict[str, Any]:
     """
     Build evaluation environment with column references and functions.
     
     Args:
         df: DataFrame containing base columns
+        rng: Optional random number generator for random functions
     
     Returns:
         Dictionary mapping names to values/functions for evaluation
@@ -45,6 +46,52 @@ def build_env(df: pd.DataFrame) -> Dict[str, Any]:
     env["hours"] = make_timedelta_func("h")
     env["days"] = make_timedelta_func("D")
     
+    # Date/time extraction functions (vectorized)
+    def hour_func(x):
+        """Extract hour (0-23) from datetime."""
+        if isinstance(x, pd.Series):
+            return pd.to_datetime(x).dt.hour
+        return pd.Timestamp(x).hour
+    
+    def date_func(x):
+        """Extract date part from datetime (returns pd.Timestamp with time at midnight)."""
+        if isinstance(x, pd.Series):
+            # Return Timestamp with time set to midnight for consistency
+            return pd.to_datetime(pd.to_datetime(x).dt.date)
+        ts = pd.Timestamp(x)
+        return pd.Timestamp(ts.date())
+    
+    def day_of_week_func(x):
+        """Extract day of week (0=Monday, 6=Sunday)."""
+        if isinstance(x, pd.Series):
+            return pd.to_datetime(x).dt.dayofweek
+        return pd.Timestamp(x).dayofweek
+    
+    def day_of_month_func(x):
+        """Extract day of month (1-31)."""
+        if isinstance(x, pd.Series):
+            return pd.to_datetime(x).dt.day
+        return pd.Timestamp(x).day
+    
+    def month_func(x):
+        """Extract month (1-12)."""
+        if isinstance(x, pd.Series):
+            return pd.to_datetime(x).dt.month
+        return pd.Timestamp(x).month
+    
+    def year_func(x):
+        """Extract year."""
+        if isinstance(x, pd.Series):
+            return pd.to_datetime(x).dt.year
+        return pd.Timestamp(x).year
+    
+    env["hour"] = hour_func
+    env["date"] = date_func
+    env["day_of_week"] = day_of_week_func
+    env["day_of_month"] = day_of_month_func
+    env["month"] = month_func
+    env["year"] = year_func
+    
     # Clip function
     def clip_func(x, *args):
         # Handle clip(x, upper) or clip(x, lower, upper)
@@ -62,6 +109,180 @@ def build_env(df: pd.DataFrame) -> Dict[str, Any]:
         return np.clip(x, lower, upper)
     
     env["clip"] = clip_func
+    
+    # Uniform random function
+    def uniform_func(low, high):
+        """
+        Generate uniform random values between low and high.
+        
+        Args:
+            low: Lower bound (scalar or Series)
+            high: Upper bound (scalar or Series)
+        
+        Returns:
+            Series of random values
+        """
+        if rng is None:
+            raise ValueError("uniform() requires a random number generator. Ensure rng is passed to build_env().")
+        
+        n = len(df)
+        if isinstance(low, pd.Series) and isinstance(high, pd.Series):
+            # Per-row bounds
+            result = pd.Series(index=df.index, dtype=float)
+            for idx in df.index:
+                l = low.loc[idx] if isinstance(low, pd.Series) else low
+                h = high.loc[idx] if isinstance(high, pd.Series) else high
+                result.loc[idx] = rng.uniform(l, h)
+            return result
+        else:
+            # Fixed bounds for all rows
+            return pd.Series(rng.uniform(low, high, size=n), index=df.index)
+    
+    env["uniform"] = uniform_func
+    
+    # Null check functions
+    def isnull_func(x):
+        """Check if value is null/None."""
+        if isinstance(x, pd.Series):
+            return x.isna()
+        return pd.isna(x)
+    
+    def notnull_func(x):
+        """Check if value is not null/None."""
+        if isinstance(x, pd.Series):
+            return x.notna()
+        return pd.notna(x)
+    
+    env["isnull"] = isnull_func
+    env["notnull"] = notnull_func
+    
+    # Weighted choice function
+    def weighted_choice_func(*args):
+        """
+        Select a value from weighted choices.
+        
+        Args:
+            *args: Alternating value/probability pairs: (val1, prob1, val2, prob2, ...)
+                   Or a single tuple/list: ((val1, prob1, val2, prob2, ...))
+        
+        Returns:
+            Series of selected values
+        """
+        if rng is None:
+            raise ValueError("weighted_choice() requires a random number generator.")
+        
+        n = len(df)
+        
+        # Handle single tuple/list argument
+        if len(args) == 1 and isinstance(args[0], (tuple, list, pd.Series)):
+            args = args[0]
+        
+        # Parse value/probability pairs
+        if len(args) % 2 != 0:
+            raise ValueError(
+                f"weighted_choice() expects an even number of arguments (value/prob pairs), "
+                f"got {len(args)}"
+            )
+        
+        values = []
+        probs = []
+        for i in range(0, len(args), 2):
+            values.append(args[i])
+            probs.append(args[i + 1])
+        
+        # Normalize probabilities
+        probs = np.array(probs, dtype=float)
+        if np.any(probs < 0):
+            raise ValueError("Probabilities must be non-negative")
+        probs = probs / probs.sum()  # Normalize
+        
+        # Generate cumulative probabilities
+        cumprobs = np.cumsum(probs)
+        
+        # Sample for each row
+        result = pd.Series(index=df.index, dtype=object)
+        rand_vals = rng.random(n)
+        
+        for idx, rand_val in zip(df.index, rand_vals):
+            # Find which bin this random value falls into
+            selected_idx = np.searchsorted(cumprobs, rand_val, side='right')
+            if selected_idx >= len(values):
+                selected_idx = len(values) - 1
+            result.loc[idx] = values[selected_idx]
+        
+        return result
+    
+    env["weighted_choice"] = weighted_choice_func
+    
+    # Conditional weighted choice
+    def weighted_choice_if_func(condition, true_choices, false_choices):
+        """
+        Select a value from weighted choices based on condition.
+        
+        Args:
+            condition: Boolean Series or scalar condition
+            true_choices: Tuple/list of (val1, prob1, val2, prob2, ...) for True case
+            false_choices: Tuple/list of (val1, prob1, val2, prob2, ...) for False case
+        
+        Returns:
+            Series of selected values
+        """
+        if rng is None:
+            raise ValueError("weighted_choice_if() requires a random number generator.")
+        
+        n = len(df)
+        result = pd.Series(index=df.index, dtype=object)
+        
+        # Evaluate condition
+        if isinstance(condition, pd.Series):
+            cond_series = condition
+        else:
+            cond_series = pd.Series([condition] * n, index=df.index)
+        
+        # Parse choices
+        def parse_choices(choices):
+            """Parse value/prob pairs from tuple/list."""
+            if isinstance(choices, (tuple, list)):
+                if len(choices) % 2 != 0:
+                    raise ValueError(
+                        f"Choices must have even number of elements (value/prob pairs), "
+                        f"got {len(choices)}"
+                    )
+                values = [choices[i] for i in range(0, len(choices), 2)]
+                probs = np.array([choices[i + 1] for i in range(0, len(choices), 2)], dtype=float)
+                if np.any(probs < 0):
+                    raise ValueError("Probabilities must be non-negative")
+                probs = probs / probs.sum()  # Normalize
+                return values, probs
+            else:
+                raise ValueError(f"Choices must be tuple or list, got {type(choices)}")
+        
+        true_values, true_probs = parse_choices(true_choices)
+        false_values, false_probs = parse_choices(false_choices)
+        
+        true_cumprobs = np.cumsum(true_probs)
+        false_cumprobs = np.cumsum(false_probs)
+        
+        # Sample for each row
+        rand_vals = rng.random(n)
+        
+        for idx, (cond_val, rand_val) in zip(df.index, zip(cond_series, rand_vals)):
+            if cond_val:
+                # Use true choices
+                selected_idx = np.searchsorted(true_cumprobs, rand_val, side='right')
+                if selected_idx >= len(true_values):
+                    selected_idx = len(true_values) - 1
+                result.loc[idx] = true_values[selected_idx]
+            else:
+                # Use false choices
+                selected_idx = np.searchsorted(false_cumprobs, rand_val, side='right')
+                if selected_idx >= len(false_values):
+                    selected_idx = len(false_values) - 1
+                result.loc[idx] = false_values[selected_idx]
+        
+        return result
+    
+    env["weighted_choice_if"] = weighted_choice_if_func
     
     return env
 
@@ -145,6 +366,46 @@ def eval_node(node: ast.AST, env: Dict[str, Any]) -> Any:
                 ok = current == right
             elif isinstance(op, ast.NotEq):
                 ok = current != right
+            elif isinstance(op, ast.Is):
+                # Handle 'is None' checks
+                # Check if comparing to None
+                is_none_comparison = (right is None) or (isinstance(right, pd.Series) and right.isna().all())
+                if is_none_comparison:
+                    # Check if current is None/NA
+                    if isinstance(current, pd.Series):
+                        ok = current.isna()
+                    elif isinstance(current, np.ndarray):
+                        ok = pd.isna(current)
+                    else:
+                        # Scalar: check if None or NaN
+                        ok = (current is None) or (isinstance(current, float) and pd.isna(current))
+                else:
+                    # For 'is' operator with non-None, use identity comparison
+                    # Note: 'is' doesn't work element-wise for Series, so we use == for Series
+                    if isinstance(current, pd.Series) or isinstance(right, pd.Series):
+                        ok = current == right  # Use == for Series comparison
+                    else:
+                        ok = current is right  # Use 'is' for scalar comparison
+            elif isinstance(op, ast.IsNot):
+                # Handle 'is not None' checks
+                # Check if comparing to None
+                is_none_comparison = (right is None) or (isinstance(right, pd.Series) and right.isna().all())
+                if is_none_comparison:
+                    # Check if current is not None/NA
+                    if isinstance(current, pd.Series):
+                        ok = current.notna()
+                    elif isinstance(current, np.ndarray):
+                        ok = pd.notna(current)
+                    else:
+                        # Scalar: check if not None and not NaN
+                        ok = (current is not None) and not (isinstance(current, float) and pd.isna(current))
+                else:
+                    # For 'is not' operator with non-None, use identity comparison
+                    # Note: 'is not' doesn't work element-wise for Series, so we use != for Series
+                    if isinstance(current, pd.Series) or isinstance(right, pd.Series):
+                        ok = current != right  # Use != for Series comparison
+                    else:
+                        ok = current is not right  # Use 'is not' for scalar comparison
             else:
                 raise ValueError(f"Unexpected Compare op {type(op)}")
             
@@ -185,22 +446,31 @@ def eval_node(node: ast.AST, env: Dict[str, Any]) -> Any:
             return node.s
         return None
     
+    elif isinstance(node, (ast.Tuple, ast.List)):
+        # Evaluate tuple/list elements
+        elts = [eval_node(elt, env) for elt in node.elts]
+        if isinstance(node, ast.Tuple):
+            return tuple(elts)
+        else:
+            return list(elts)
+    
     else:
         raise ValueError(f"Unexpected node type {type(node)}")
 
 
-def eval_derived(prog: DerivedProgram, df: pd.DataFrame) -> pd.Series:
+def eval_derived(prog: DerivedProgram, df: pd.DataFrame, rng: Optional[np.random.Generator] = None) -> pd.Series:
     """
     Evaluate a derived expression program on a DataFrame chunk.
     
     Args:
         prog: Compiled DerivedProgram
         df: DataFrame containing base columns (and previously computed derived columns)
+        rng: Optional random number generator for random functions like uniform()
     
     Returns:
         Series with computed values
     """
-    env = build_env(df)
+    env = build_env(df, rng=rng)
     result = eval_node(prog.ast_root, env)
     
     # Ensure result is a Series with correct length

@@ -50,24 +50,56 @@ class ManagerAgent(BaseAgent):
                 {"role": "user", "content": user_content},
             ]
 
-            raw = chat(messages)
-            data = extract_json(raw)
+            # Retry logic for JSON parsing AND IR validation (max 2 attempts)
+            max_retries = 2
+            data = None
             
-            # Fix common LLM errors: convert None params to empty dict
-            if isinstance(data, dict) and "distributions" in data:
-                for dist in data["distributions"]:
-                    if isinstance(dist, dict) and dist.get("params") is None:
-                        dist["params"] = {}
-            
-            # Log the extracted data for debugging
-            logger.debug(f"Extracted JSON data: {data}")
-            
-            try:
-                board.requirement_ir = RequirementIR.model_validate(data)
-            except Exception as e:
-                logger.error(f"Validation error: {e}")
-                logger.error(f"Data that failed validation: {data}")
-                raise
+            for attempt in range(max_retries):
+                try:
+                    # Step 1: Call LLM and parse JSON
+                    raw = chat(messages)
+                    data = extract_json(raw)
+                    
+                    # Fix common LLM errors: convert None params to empty dict
+                    if isinstance(data, dict) and "distributions" in data:
+                        for dist in data["distributions"]:
+                            if isinstance(dist, dict) and dist.get("params") is None:
+                                dist["params"] = {}
+                    
+                    # Log the extracted data for debugging
+                    logger.debug(f"Extracted JSON data: {data}")
+                    
+                    # Step 2: Validate IR structure
+                    board.requirement_ir = RequirementIR.model_validate(data)
+                    
+                    # Success! Exit retry loop
+                    break
+                    
+                except JSONParseError as e:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"JSON parsing failed (attempt {attempt + 1}/{max_retries}), retrying...")
+                        messages.append({
+                            "role": "user",
+                            "content": "Please return ONLY valid JSON, no markdown formatting or explanations."
+                        })
+                    else:
+                        raise
+                        
+                except Exception as e:
+                    # IR validation error or other error
+                    if attempt < max_retries - 1:
+                        logger.warning(f"IR validation failed (attempt {attempt + 1}/{max_retries}): {e}")
+                        error_summary = str(e)[:200]
+                        messages.append({
+                            "role": "user",
+                            "content": f"The previous response failed validation. Error: {error_summary}. "
+                                      f"Please fix the JSON structure and ensure all required fields are present and correctly formatted."
+                        })
+                    else:
+                        logger.error(f"Validation error: {e}")
+                        if data:
+                            logger.error(f"Data that failed validation (first 2000 chars): {str(data)[:2000]}")
+                        raise
 
             logger.info(
                 f"Manager agent: Successfully extracted RequirementIR "

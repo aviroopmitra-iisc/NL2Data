@@ -166,9 +166,9 @@ def enforce_nullability(df: pd.DataFrame, table_spec) -> pd.DataFrame:
             # Fill nulls with appropriate defaults based on type
             null_mask = df[col_spec.name].isna()
             if null_mask.any():
-                if col_spec.sql_type in ("INT32", "INT64"):
+                if col_spec.sql_type == "INT":
                     df.loc[null_mask, col_spec.name] = 0
-                elif col_spec.sql_type in ("FLOAT32", "FLOAT64"):
+                elif col_spec.sql_type == "FLOAT":
                     df.loc[null_mask, col_spec.name] = 0.0
                 elif col_spec.sql_type == "TEXT":
                     df.loc[null_mask, col_spec.name] = ""

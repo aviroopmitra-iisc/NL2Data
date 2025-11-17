@@ -189,3 +189,139 @@ Generate a SaaS metrics dataset for a multi-tenant web application with heavy us
     where `fraction_of_intervals_with_slo_latency_breached_over_last_7d` is conceptually derived from the time series of the same tenant.
 
 * The IR should contain these derived expressions in terms of base metrics and dimension-driven thresholds, exercising arithmetic, comparison, boolean combination, and function-based derivation.
+
+16.
+
+Generate a ride-sharing trip dataset for a large city where the focus is on **supply–demand imbalance** and **dynamic pricing**. Capture short trips in the city center, long airport trips, and late-night surge windows. Include driver shifts, cancellations (by rider vs driver), and reassignments of trips to different drivers when the original driver cancels. Make sure the schema can support queries like: "for each 15-minute interval and neighborhood, compute demand, available drivers, and average surge multiplier," and "identify drivers who frequently cancel high-surge trips."
+
+17.
+
+Create a subscription-billing dataset for a SaaS product with **plan upgrades/downgrades**, **free trials**, and **prorated invoices**. Each customer can have multiple subscriptions over time (e.g., separate products or environments), and each subscription can change plans mid-cycle. Model invoices, line items, discounts, credits, taxes, and payment failures. The schema should make it easy to answer: "MRR by plan on a given date," "customers who churned within 30 days of an upgrade," and "outstanding unpaid balances segmented by customer segment and region."
+
+18.
+
+Design an e-commerce **returns and refunds** dataset that explicitly models the lifecycle of a return: request created, item received at warehouse, inspection result, refund issued, and restock or discard decision.
+
+Include:
+
+* Orders, order items, customers, and products (with categories and attributes like size/color).
+
+* Return requests with reasons (too small, defective, changed mind, etc.).
+
+* Inspection outcomes (approved, partial approved, rejected) and associated notes.
+
+* Refunds that may be **partial** (e.g., only one item from a multi-item order) or **split across payment methods** (gift card + card).
+
+The schema should support queries like "return rate by size per product over time" and "fraction of returns tagged as defective by supplier."
+
+19.
+
+Create a logistics and shipment dataset for a retailer that ships from **multiple warehouses** and supports **split shipments** for a single order.
+
+Model:
+
+* Orders and order items.
+
+* Shipments (each shipment can contain items from multiple orders; each order can produce multiple shipments).
+
+* Tracking events (picked, packed, handed to carrier, in-transit, out-for-delivery, delivered, failed-delivery, returned-to-sender).
+
+* Carrier-specific SLAs and promised delivery dates.
+
+Data should allow queries like "average delivery delay by carrier and region," "orders where at least one shipment is lost," and "items that frequently miss SLA when shipped from a specific warehouse."
+
+20.
+
+Generate an HR / workforce dataset for a global company with **hierarchical org structure**, **job changes**, and **compensation history**.
+
+Include:
+
+* Employees, departments, and a manager–subordinate hierarchy (supporting multiple reorgs over time).
+
+* Position history: promotions, lateral moves, and demotions with effective dates.
+
+* Compensation history: base salary, bonus target, stock grants, with region-specific currencies.
+
+The schema should enable queries like "org chart as of a given date," "gender pay gap by level and region," and "average time-to-promotion by department."
+
+21.
+
+Create a digital-marketing attribution dataset where users can interact across **multiple channels and devices** before conversion.
+
+Requirements:
+
+* User identities with a device graph (cookies, mobile device IDs, login IDs) that can be merged over time.
+
+* Touchpoints: impressions, clicks, email opens, push notifications, and direct visits, each with campaign, channel, and timestamp.
+
+* Conversions (e.g., purchases or sign-ups) with revenue and product/category tags.
+
+The schema should make it possible to implement different attribution models (first-touch, last-touch, position-based, data-driven) and answer questions like "top campaigns by incremental revenue last 30 days."
+
+22.
+
+Design an **event-driven monitoring** dataset for a cloud service that tracks **incidents, alerts, and deployments**.
+
+Model:
+
+* Services, clusters, and environments (prod, staging, etc.).
+
+* Time-series metrics summarized into intervals (CPU, memory, error rate, latency).
+
+* Incidents with start/end timestamps, severity, and impacted services.
+
+* Alerts fired from different detection rules (threshold-based, anomaly-based) and their relationship to incidents.
+
+* Deployments/releases with change metadata (commit hash, feature flags, owner team).
+
+The schema should support queries like "incidents within 30 minutes of a deployment," "alerts that fired but did not correspond to any incident (false positives)," and "MTTR by service and severity."
+
+23.
+
+Create a **B2B contracts and usage** dataset for an API platform where customers sign contracts with **committed usage** and **overage pricing**.
+
+Include:
+
+* Customers and contracts (start/end, committed monthly units, price tiers, SLAs).
+
+* API usage aggregated by day and endpoint, tagged by customer and environment.
+
+* Overage calculations (units above commitment) and invoices linked to both contract and usage.
+
+* SLA breaches computed from uptime/latency metrics per contract.
+
+Ensure the schema can express: "monthly revenue vs committed revenue," "customers consistently under-utilizing their commitment," and "contracts frequently breaching SLA but not yet churned."
+
+24.
+
+Design a **food delivery platform** dataset that captures orders with **multi-party interactions** (customer, restaurant, courier).
+
+The schema should cover:
+
+* Restaurants with opening hours, cuisines, and dynamic availability (open/closed/paused).
+
+* Menus and menu items with options/add-ons (extra cheese, size variants).
+
+* Orders and order items, with special instructions and scheduled vs ASAP orders.
+
+* Courier assignments, reassignments, and pickup/delivery timestamps.
+
+* Cancellations and refunds with reason codes (restaurant closed, courier unavailable, customer changed mind).
+
+It should be possible to answer: "median prep time per restaurant," "couriers with unusually high cancellation rates," and "orders delivered cold (delivery time way above restaurant's SLA)."
+
+25.
+
+Create a **university academic records** dataset focused on **program changes, prerequisites, and retakes** rather than just simple enrollments.
+
+Include:
+
+* Students with admission cohort, program/major history (with effective dates), and academic status (active, leave, dismissed, graduated).
+
+* Courses with prerequisite chains and equivalence mappings (legacy vs new course codes).
+
+* Enrollments with attempt number, grade, and flags for retake, withdrawal, or incomplete.
+
+* Term-level aggregates (GPA, credits attempted vs completed).
+
+The schema should allow queries like "students who changed major from STEM to non-STEM and then improved GPA," "bottleneck courses with high failure rate among prerequisite chains," and "average number of attempts before passing key gateway courses."

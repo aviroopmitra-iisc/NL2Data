@@ -148,17 +148,59 @@ def generate_fact_stream(
 
         df_chunk = pd.DataFrame(base_block)
 
+        # Phase 1.5: Join dimension tables (for derived column lookups)
+        # This allows derived expressions to reference dimension columns
+        for fk in table.foreign_keys:
+            ref_table_name = fk.ref_table
+            if ref_table_name in dims:
+                dim_df = dims[ref_table_name]
+                # Join on foreign key
+                # Use left join to preserve all fact rows
+                df_chunk = df_chunk.merge(
+                    dim_df,
+                    how="left",
+                    left_on=fk.column,
+                    right_on=fk.ref_column,
+                    suffixes=("", f"_{ref_table_name}")
+                )
+                logger.debug(
+                    f"Joined dimension '{ref_table_name}' to fact table '{table.name}' "
+                    f"on {fk.column} = {fk.ref_column}"
+                )
+            else:
+                logger.warning(
+                    f"Dimension table '{ref_table_name}' not found for join. "
+                    f"Derived expressions referencing this dimension will fail."
+                )
+
         # Phase 2: Compute derived columns in dependency order
         for col_name in derived_cols:
             key = (table.name, col_name)
             if key in derived_reg.programs:
                 prog = derived_reg.programs[key]
                 try:
-                    df_chunk[col_name] = eval_derived(prog, df_chunk)
+                    df_chunk[col_name] = eval_derived(prog, df_chunk, rng=rng)
+                except KeyError as e:
+                    # Column not found - provide helpful error
+                    missing_col = str(e).strip("'")
+                    logger.error(
+                        f"Failed to compute derived column '{col_name}' in table '{table.name}': "
+                        f"Missing column '{missing_col}'. "
+                        f"Available columns: {list(df_chunk.columns)}. "
+                        f"Expression: {prog.expr}. "
+                        f"Dependencies: {prog.dependencies}."
+                    )
+                    raise ValueError(
+                        f"Derived column '{col_name}' in table '{table.name}' depends on "
+                        f"column '{missing_col}' which is not available. "
+                        f"Ensure the column exists in the table or is joined from a dimension."
+                    ) from e
                 except Exception as e:
                     logger.error(
                         f"Failed to compute derived column '{col_name}' in chunk "
-                        f"{chunk_num + 1} of table '{table.name}': {e}"
+                        f"{chunk_num + 1} of table '{table.name}': {e}. "
+                        f"Expression: {prog.expr}. "
+                        f"Dependencies: {prog.dependencies}."
                     )
                     raise
 

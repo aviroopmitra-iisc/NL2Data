@@ -229,7 +229,8 @@ Project v3/
 │   │   │   │   ├── llm_client.py    # LLM API wrapper (OpenAI/Gemini/local)
 │   │   │   │   ├── json_parser.py   # Robust JSON extraction
 │   │   │   │   ├── retry.py         # Retry utilities with exponential backoff
-│   │   │   │   └── error_handling.py # Standardized error handling
+│   │   │   │   ├── error_handling.py # Standardized error handling
+│   │   │   │   └── agent_retry.py   # Common agent retry logic utility
 │   │   │   └── roles/               # Specialized agents
 │   │   │       ├── __init__.py
 │   │   │       ├── manager.py       # ManagerAgent (NL → RequirementIR)
@@ -1471,22 +1472,34 @@ def generate_from_ir(
    facts = {name: t for name, t in tables.items() if t.kind == "fact"}
    ```
 
-3. **Dimension Generation**:
+3. **Dimension Generation** (with error handling):
    ```python
    for name, table_spec in dims.items():
-       df = generate_dimension(table_spec, ir, rng, derived_reg)
-       write_csv(df, output_path)
-       dim_dfs[name] = df  # Store for FK references
+       try:
+           df = generate_dimension(table_spec, ir, rng, derived_reg)
+           write_csv(df, output_path)
+           dim_dfs[name] = df  # Store for FK references
+       except Exception as e:
+           logger.error(f"Failed to generate dimension table '{name}': {e}")
+           # Continue with remaining tables instead of stopping
    ```
+   - **Error Resilience**: If one dimension table fails, generation continues with remaining tables
+   - **Failure Tracking**: Failed tables are logged and reported at the end
 
-4. **Fact Generation** (Streaming):
+4. **Fact Generation** (Streaming, with error handling):
    ```python
    for name, table_spec in facts.items():
-       stream = generate_fact_stream(
-           table_spec, ir, dim_dfs, rng, chunk_rows, derived_reg
-       )
-       write_csv_stream(stream, output_path)
+       try:
+           stream = generate_fact_stream(
+               table_spec, ir, dim_dfs, rng, chunk_rows, derived_reg
+           )
+           write_csv_stream(stream, output_path)
+       except Exception as e:
+           logger.error(f"Failed to generate fact table '{name}': {e}")
+           # Continue with remaining tables instead of stopping
    ```
+   - **Error Resilience**: If one fact table fails, generation continues with remaining tables
+   - **Partial Success**: Pipeline completes successfully even if some tables fail
 
 #### 3.2 Dimension Generator (`generation/engine/dim_generator.py`)
 
@@ -1639,6 +1652,114 @@ def sample_fact_column(
 
 #### 3.4 Derived Column System
 
+The system supports derived columns that are computed from other columns using a Domain-Specific Language (DSL). Derived columns enable complex calculations, temporal extractions, and conditional logic without requiring pre-computed values.
+
+**Key Features**:
+- **Dependency Tracking**: Automatic detection and topological sorting of column dependencies
+- **Vectorized Evaluation**: Efficient pandas-based computation on entire DataFrames
+- **Type Safety**: Optional dtype hints for expression result types
+- **Dimension Lookups**: Support for referencing columns from joined dimension tables
+- **Comprehensive Validation**: Compile-time and runtime checks for expression validity
+
+**DSL Functions Reference**:
+
+**Date/Time Extraction**:
+- `hour(datetime_col)`: Extract hour (0-23) as integer
+- `date(datetime_col)`: Extract date part (returns Timestamp with time at midnight)
+- `day_of_week(datetime_col)`: Extract day of week (0=Monday, 6=Sunday) as integer
+- `day_of_month(datetime_col)`: Extract day of month (1-31) as integer
+- `month(datetime_col)`: Extract month (1-12) as integer
+- `year(datetime_col)`: Extract year as integer
+
+**Arithmetic Operations**:
+- `+`, `-`, `*`, `/`, `//` (floor division), `%` (modulo), `**` (exponentiation)
+
+**Boolean Operations**:
+- `and`, `or`, `not`
+
+**Comparison Operators**:
+- `<`, `<=`, `>`, `>=`, `==`, `!=`
+
+**Conditional Logic**:
+- `where(condition, value_if_true, value_if_false)`: Vectorized conditional
+- `value_if_true if condition else value_if_false`: Ternary expression
+
+**Math Functions**:
+- `abs(x)`: Absolute value
+- `sqrt(x)`: Square root
+- `log(x)`: Natural logarithm
+- `exp(x)`: Exponential
+- `clip(x, lower, upper)`: Clip value to range
+
+**Time Arithmetic** (for intervals):
+- `seconds(n)`: Convert to timedelta in seconds
+- `minutes(n)`: Convert to timedelta in minutes
+- `hours(n)`: Convert to timedelta in hours
+- `days(n)`: Convert to timedelta in days
+
+**Expression Examples**:
+
+1. **Simple Arithmetic**:
+   ```python
+   "unit_price * quantity"  # Calculate line subtotal
+   ```
+
+2. **Date Extraction**:
+   ```python
+   "date(timestamp)"  # Extract date part
+   "hour(timestamp)"  # Extract hour of day
+   ```
+
+3. **Conditional Boolean**:
+   ```python
+   "where((hour(timestamp) >= 7 and hour(timestamp) <= 9) or (hour(timestamp) >= 16 and hour(timestamp) <= 18), 1, 0)"  # Peak hour flag
+   ```
+
+4. **Weekend Detection**:
+   ```python
+   "where(day_of_week(timestamp) >= 5, 1, 0)"  # Weekend flag (Saturday=5, Sunday=6)
+   ```
+
+5. **Chained Arithmetic**:
+   ```python
+   "gross_fare - discount_amount + tax_amount"  # Net fare calculation
+   ```
+
+6. **Conditional with Threshold**:
+   ```python
+   "where(consumption_kwh > threshold, cost_before_rebate * rebate_rate, 0)"  # Rebate amount
+   ```
+
+7. **Dimension Lookup** (after join):
+   ```python
+   "dynamic_price_per_kwh / baseline_price_per_kwh"  # Price multiplier (baseline from dimension)
+   ```
+
+8. **Time Arithmetic**:
+   ```python
+   "start_time + minutes(duration_minutes)"  # End time calculation
+   ```
+
+**Dimension Lookup Mechanism**:
+
+Derived expressions can reference columns from dimension tables through automatic joins. The fact generator performs left joins on foreign keys before computing derived columns, making dimension attributes available in the expression environment.
+
+Example:
+- Fact table has `tariff_plan_id` foreign key
+- Dimension table `dim_tariff_plan` has `baseline_price_per_kwh` column
+- Derived expression: `"dynamic_price_per_kwh / baseline_price_per_kwh"`
+- The generator automatically joins `dim_tariff_plan` before evaluating the expression
+
+**Validation**:
+
+The system validates derived columns at multiple stages:
+
+1. **Compile-time**: Expression syntax and allowed functions are checked
+2. **IR Validation**: Dependencies are verified to exist in the schema
+3. **Runtime**: Missing columns or evaluation errors provide helpful error messages
+
+**Implementation Details**:
+
 **Dependency Tracking** (`generation/derived_registry.py`):
 
 ```python
@@ -1757,8 +1878,9 @@ def compile_derived(expr: str, dtype: Optional[str] = None) -> DerivedProgram:
 ```
 
 **Allowed Functions**:
-- `abs`, `log`, `exp`, `sqrt`, `clip`, `where`
-- `seconds`, `minutes`, `hours`, `days` (for datetime arithmetic)
+- Math: `abs`, `log`, `exp`, `sqrt`, `clip`, `where`
+- Time intervals: `seconds`, `minutes`, `hours`, `days` (for datetime arithmetic)
+- Date/time extraction: `hour`, `date`, `day_of_week`, `day_of_month`, `month`, `year`
 
 **Expression Evaluation** (`generation/derived_eval.py`):
 
@@ -4192,9 +4314,11 @@ def write_csv(df: pd.DataFrame, path: Path) -> None:
 
 ### Generation Constants (`generation/constants.py`)
 
-**Purpose**: Centralized constants for data generation.
+**Purpose**: Centralized constants for data generation and agent configuration.
 
 **Key Constants**:
+
+**Data Generation**:
 - `DEFAULT_DIMENSION_ROWS = 100_000`: Default row count for dimension tables
 - `DEFAULT_FACT_ROWS = 1_000_000`: Default row count for fact tables
 - `DEFAULT_INT_RANGE = (1, 1_000_000)`: Default integer range for fallback sampling
@@ -4203,10 +4327,21 @@ def write_csv(df: pd.DataFrame, path: Path) -> None:
 - `LARGE_TABLE_THRESHOLD = 1_000_000`: Threshold for "large" tables
 - Rush hour and semantic transformation constants
 
+**Agent Configuration**:
+- `AGENT_MAX_RETRIES = 2`: Standard retry count for agent LLM calls
+- `LARGE_SCHEMA_COLUMN_THRESHOLD = 30`: Threshold for "large" schemas (column count)
+- `SCHEMA_COVERAGE_THRESHOLD = 0.8`: 80% coverage threshold for large schemas
+
+**Error Message Truncation**:
+- `ERROR_MESSAGE_TRUNCATE_LENGTH = 200`: Error message truncation length
+- `DEBUG_DATA_TRUNCATE_LENGTH = 1000`: Debug log truncation length
+- `VALIDATION_DATA_TRUNCATE_LENGTH = 2000`: Validation error truncation length
+
 **Benefits**:
 - **Maintainability**: Single place to update default values
 - **Consistency**: Ensures same defaults across codebase
 - **Configurability**: Easy to adjust thresholds and ranges
+- **Code Quality**: Eliminates magic numbers throughout the codebase
 
 ### Retry Utilities (`agents/tools/retry.py`)
 
@@ -4234,7 +4369,113 @@ def write_csv(df: pd.DataFrame, path: Path) -> None:
 - **Consistency**: Uniform error messages across agents
 - **Maintainability**: Single place to update error handling
 
+### Agent Retry Utility (`agents/tools/agent_retry.py`)
+
+**Purpose**: Common retry logic for agent LLM calls with JSON parsing and IR validation.
+
+**Key Function**:
+- `call_llm_with_retry(messages, ir_model, max_retries, pre_process, post_process, custom_validation) -> T`: Unified retry logic for all agents
+
+**Features**:
+- Generic retry logic for LLM calls with JSON parsing
+- IR model validation with Pydantic
+- Configurable pre/post-processing hooks
+- Custom validation support
+- Uses constants from `generation.constants` for configuration
+
+**Benefits**:
+- **Code Reduction**: Eliminates ~200-300 lines of duplicated code across 5 agent files
+- **Consistency**: Uniform error handling and retry behavior across all agents
+- **Maintainability**: Single place to update retry logic
+- **Type Safety**: Generic type parameter ensures correct IR model types
+- **Flexibility**: Supports agent-specific pre/post-processing and custom validation
+
+**Usage Example**:
+```python
+from nl2data.agents.tools.agent_retry import call_llm_with_retry
+from nl2data.ir.logical import LogicalIR
+
+# Simple usage
+board.logical_ir = call_llm_with_retry(messages, LogicalIR)
+
+# With pre-processing (fix common LLM mistakes)
+board.logical_ir = call_llm_with_retry(
+    messages,
+    LogicalIR,
+    pre_process=_fix_common_llm_mistakes
+)
+
+# With custom validation
+def validate_table_names(data: dict) -> None:
+    # Custom validation logic
+    if invalid_tables:
+        raise ValueError(f"Invalid tables: {invalid_tables}")
+
+board.generation_ir = call_llm_with_retry(
+    messages,
+    GenerationIR,
+    custom_validation=validate_table_names
+)
+```
+
 ---
+
+## Derived Columns and DSL
+
+This section provides comprehensive documentation on the derived column system and Domain-Specific Language (DSL) for expression evaluation.
+
+### Overview
+
+Derived columns are computed from other columns using expressions written in a Python-like DSL. They enable:
+- **Complex Calculations**: Arithmetic operations, conditional logic, and chained computations
+- **Temporal Analysis**: Date/time extraction and time arithmetic
+- **Dimension Lookups**: Reference attributes from joined dimension tables
+- **Business Logic**: Implement domain-specific rules and constraints
+
+### DSL Reference
+
+See the [Derived Column System](#34-derived-column-system) section in Implementation Details for the complete DSL reference, including:
+- All available functions
+- Expression examples
+- Dimension lookup mechanism
+- Validation details
+
+### Best Practices
+
+1. **Use Descriptive Column Names**: Derived columns should have clear names indicating their purpose
+2. **Document Complex Expressions**: For complex expressions, consider adding comments in the IR
+3. **Test Edge Cases**: Validate expressions with boundary values (midnight, year boundaries, etc.)
+4. **Leverage Dimension Joins**: Use dimension lookups for attributes that vary by entity type
+5. **Type Safety**: Always specify `dtype` for derived columns to ensure correct type coercion
+
+### Common Patterns
+
+**Peak Hour Detection**:
+```python
+"where((hour(timestamp) >= 7 and hour(timestamp) <= 9) or (hour(timestamp) >= 16 and hour(timestamp) <= 18), 1, 0)"
+```
+
+**Weekend Flag**:
+```python
+"where(day_of_week(timestamp) >= 5, 1, 0)"
+```
+
+**Chained Monetary Calculations**:
+```python
+"gross_fare - discount_amount + tax_amount"
+```
+
+**Conditional Rebates**:
+```python
+"where(consumption_kwh > threshold, cost_before_rebate * rebate_rate, 0)"
+```
+
+**Dimension-Based Pricing**:
+```python
+"dynamic_price_per_kwh / baseline_price_per_kwh"  # baseline from dimension
+```
+
+For more examples and detailed documentation, see `Improvement.md`.
 
 ## Usage Examples
 
@@ -4849,6 +5090,11 @@ messages = [
 2. **Dependency Validation**: Detects circular dependencies in derived columns
 3. **Type Coercion**: Handles type mismatches (e.g., categorical values to strings)
 4. **Memory Management**: Streaming generation prevents OOM errors
+5. **Error Resilience**: Individual table generation failures don't stop the entire pipeline
+   - Dimension and fact table generation wrapped in try-except blocks
+   - Failed tables are logged and tracked separately
+   - Pipeline completes successfully even if some tables fail
+   - Summary report includes both successful and failed tables
 
 ### Evaluation Robustness
 
@@ -4902,6 +5148,7 @@ NL2Data is a comprehensive system for generating synthetic relational datasets f
 4. **Flexibility**: Multiple LLM providers, easy prompt iteration
 5. **Robustness**: Comprehensive error handling and validation
 6. **Extensibility**: Easy to add new distributions, agents, or evaluation metrics
+7. **Code Quality**: Centralized utilities reduce duplication, constants eliminate magic numbers, and error resilience ensures partial success scenarios
 
 ### Design Philosophy
 

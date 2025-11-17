@@ -17,14 +17,28 @@ def load_ir_from_json(ir_path: Path) -> DatasetIR:
         
     Raises:
         FileNotFoundError: If the file doesn't exist
+        ValueError: If the file is empty or corrupted
         ValidationError: If the JSON is invalid
     """
     if not ir_path.exists():
         raise FileNotFoundError(f"IR file not found: {ir_path}")
     
-    return TypeAdapter(DatasetIR).validate_json(
-        ir_path.read_text(encoding="utf-8")
-    )
+    # Check if file is empty
+    file_content = ir_path.read_text(encoding="utf-8").strip()
+    if not file_content:
+        raise ValueError(
+            f"IR file is empty or corrupted: {ir_path}. "
+            f"The file exists but contains no valid JSON data. "
+            f"Please regenerate the IR or delete the file to force regeneration."
+        )
+    
+    try:
+        return TypeAdapter(DatasetIR).validate_json(file_content)
+    except Exception as e:
+        raise ValueError(
+            f"Failed to load IR from {ir_path}: {e}. "
+            f"The file may be corrupted. Please regenerate the IR or delete the file to force regeneration."
+        ) from e
 
 
 def save_ir_to_json(ir: DatasetIR, ir_path: Path) -> None:

@@ -30,9 +30,9 @@ def run_pipeline(
     settings = get_settings()
     steps: List[StepLog] = []
 
-    # Save CSV files directly in the output_root directory (no subfolder)
-    # This allows the test script to manage the folder structure
-    out_dir = output_root
+    # Save CSV files in a 'data' subfolder within output_root
+    # IR files are saved in output_root, CSV files in output_root/data
+    out_dir = output_root / "data"
     out_dir.mkdir(parents=True, exist_ok=True)
     
     # Clear any existing CSV files (keep latest run only)

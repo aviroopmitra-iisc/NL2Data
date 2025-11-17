@@ -166,3 +166,4 @@ $RECYCLE.BIN/
 # Annotation files (if they contain sensitive data)
 # annotation.jsonl
 
+*.pdf

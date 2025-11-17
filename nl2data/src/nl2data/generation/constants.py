@@ -32,3 +32,13 @@ SURGE_BASE_MAX = 1.5
 SURGE_RUSH_MIN = 1.5
 SURGE_RUSH_MAX = 3.0
 
+# Agent retry configuration
+AGENT_MAX_RETRIES = 2
+LARGE_SCHEMA_COLUMN_THRESHOLD = 30  # Schemas with more columns are considered "large"
+SCHEMA_COVERAGE_THRESHOLD = 0.8  # 80% coverage required for large schemas
+
+# Error message truncation lengths
+ERROR_MESSAGE_TRUNCATE_LENGTH = 200
+DEBUG_DATA_TRUNCATE_LENGTH = 1000
+VALIDATION_DATA_TRUNCATE_LENGTH = 2000
+

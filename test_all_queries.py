@@ -18,11 +18,14 @@ from nl2data.utils.agent_factory import create_agent_sequence
 from nl2data.ir.dataset import DatasetIR
 from nl2data.evaluation.report_builder import evaluate
 from nl2data.evaluation.config import EvaluationConfig
+from nl2data.config.logging import setup_logging
 
 # Import test utilities
 from test_utils import (
     parse_queries,
     check_existing_data,
+    check_ir_exists,
+    check_csv_files_exist,
     hash_query_content,
     format_evaluation_report_markdown,
     count_derived_columns,
@@ -55,12 +58,22 @@ def test_ir_only(query_num: int, query_text: str, output_base: Path) -> Tuple[bo
         ir = board.dataset_ir
         table_names = list(ir.logical.tables.keys())
         
+        # Validate IR
+        from nl2data.ir.validators import validate_dataset
+        validation_issues = validate_dataset(ir)
+        if validation_issues:
+            issue_summary = "\n".join([f"    - {issue.code}: {issue.message}" for issue in validation_issues[:10]])
+            if len(validation_issues) > 10:
+                issue_summary += f"\n    ... and {len(validation_issues) - 10} more issues"
+            print(f"[WARNING] IR validation found {len(validation_issues)} issues:")
+            print(issue_summary)
+        
         # Count derived columns
         derived_cols = count_derived_columns(ir)
         
         # Save IR to hash-based folder
         query_hash = hash_query_content(query_text)
-        ir_output_dir = output_base / "ir_only" / f"query_{query_num}_{query_hash}"
+        ir_output_dir = output_base / "ir_only" / query_hash
         ir_output_dir.mkdir(parents=True, exist_ok=True)
         
         ir_file = ir_output_dir / "dataset_ir.json"
@@ -106,55 +119,92 @@ def test_query(query_num: int, query_text: str, output_base: Path, ir_only: bool
     
     # Create hash-based output directory
     query_hash = hash_query_content(query_text)
-    query_output = output_base / "full_pipeline" / f"query_{query_num}_{query_hash}"
+    query_output = output_base / query_hash
     query_output.mkdir(parents=True, exist_ok=True)
     
-    # Check if data already exists in the folder
-    data_exists, existing_ir, existing_table_names = check_existing_data(query_output)
+    # Create data subfolder for CSV files
+    data_dir = query_output / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
     
-    if data_exists:
-        print(f"[EXISTING] Found existing data for Query {query_num}")
-        print(f"  - Using stored IR and data files")
-        print(f"  - Tables: {', '.join(existing_table_names)}")
-        ir = existing_ir
-        table_names = existing_table_names
-        out_dir = query_output
-        data_already_exists = True
-    else:
-        print(f"[GENERATE] No existing data found, generating new data...")
-        # Clear any existing CSV files in this folder
-        for csv_file in query_output.glob("*.csv"):
-            csv_file.unlink()
-        
+    # Phase 1: Check if IR JSON exists
+    ir_exists, ir = check_ir_exists(query_output)
+    
+    if not ir_exists:
+        # Phase 1: Generate IR
+        print(f"[PHASE 1] IR not found, generating IR for Query {query_num}...")
         try:
-            ir, steps, out_dir, table_names = run_pipeline(
-                nl_description=query_text,
-                output_root=query_output,
-            )
+            # Run only IR generation (agents)
+            board = Blackboard()
+            agent_sequence = create_agent_sequence(query_text)
             
-            # Check if generation completed successfully
-            generation_step = [s for s in steps if s.name == "generation"]
-            if generation_step and generation_step[0].status == "error":
-                return False, generation_step[0].message
+            for name, agent in agent_sequence:
+                board = agent.run(board)
             
-            # Check if files were generated
-            csv_files = list(out_dir.glob("*.csv"))
-            if not csv_files:
-                return False, "No CSV files were generated"
+            if board.dataset_ir is None:
+                return False, "DatasetIR not built by agents"
             
-            # Save IR alongside data
+            ir = board.dataset_ir
+            table_names = list(ir.logical.tables.keys())
+            
+            # Save IR in the hash folder
             ir_file = query_output / "dataset_ir.json"
             ir_file.write_text(ir.model_dump_json(indent=2), encoding="utf-8")
-            
-            data_already_exists = False
+            print(f"[PHASE 1] IR generated and saved: {len(table_names)} tables")
             
         except Exception as e:
             error_msg = str(e)
-            print(f"[FAIL] Query {query_num} FAILED during generation")
+            print(f"[FAIL] Query {query_num} FAILED during Phase 1 (IR generation)")
             print(f"  Error: {error_msg}")
             print(f"  Traceback:")
             print(traceback.format_exc())
             return False, error_msg
+    else:
+        # IR exists, load it
+        print(f"[PHASE 1] IR found, skipping IR generation for Query {query_num}")
+        table_names = list(ir.logical.tables.keys())
+        print(f"  - Found {len(table_names)} tables: {', '.join(table_names)}")
+    
+    # Phase 2: Check if all CSV files exist
+    csv_files_exist = check_csv_files_exist(query_output, table_names)
+    
+    if not csv_files_exist:
+        # Phase 2: Generate data
+        print(f"[PHASE 2] CSV files missing, generating data for Query {query_num}...")
+        # Clear any existing CSV files in the data folder
+        for csv_file in data_dir.glob("*.csv"):
+            csv_file.unlink()
+        
+        try:
+            # Run data generation only
+            from nl2data.generation.engine.pipeline import generate_from_ir
+            from nl2data.config.settings import get_settings
+            
+            settings = get_settings()
+            generate_from_ir(ir, data_dir, seed=settings.seed, chunk_rows=settings.chunk_rows)
+            
+            # Verify files were generated
+            csv_files = list(data_dir.glob("*.csv"))
+            if not csv_files:
+                return False, "No CSV files were generated"
+            
+            print(f"[PHASE 2] Data generation complete: {len(csv_files)} CSV files")
+            data_already_exists = False
+            
+        except Exception as e:
+            error_msg = str(e)
+            print(f"[FAIL] Query {query_num} FAILED during Phase 2 (data generation)")
+            print(f"  Error: {error_msg}")
+            print(f"  Traceback:")
+            print(traceback.format_exc())
+            return False, error_msg
+    else:
+        # All CSV files exist, skip Phase 2
+        print(f"[PHASE 2] All CSV files found, skipping data generation for Query {query_num}")
+        csv_files = list(data_dir.glob("*.csv"))
+        print(f"  - Found {len(csv_files)} CSV files")
+        data_already_exists = True
+    
+    out_dir = data_dir
     
     # Count derived columns
     derived_cols = count_derived_columns(ir)
@@ -222,7 +272,7 @@ def main():
     parser.add_argument(
         "--ir-only",
         action="store_true",
-        help="Only test IR generation (faster, no data generation). Outputs saved to test_outputs/ir_only/TIMESTAMP/",
+        help="Only test IR generation (faster, no data generation). Outputs saved to test_output/ir_only/",
     )
     parser.add_argument(
         "--queries",
@@ -233,14 +283,26 @@ def main():
         "--output-dir",
         type=str,
         default=None,
-        help="Base output directory (default: test_outputs)",
+        help="Base output directory (default: test_output)",
     )
     
     args = parser.parse_args()
     
     project_root = Path(__file__).parent
+    
+    # Set up logging to a single log file (no timestamp, overwrite on each run)
+    log_dir = project_root / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / "test.log"
+    # Clear the log file at the start of each run
+    if log_file.exists():
+        log_file.unlink()
+    setup_logging(log_file=log_file)
+    print(f"[INFO] Logging to file: {log_file}")
+    print()
+    
     queries_file = project_root / "example queries.txt"
-    output_base = Path(args.output_dir) if args.output_dir else project_root / "test_outputs"
+    output_base = Path(args.output_dir) if args.output_dir else project_root / "test_output"
     output_base.mkdir(parents=True, exist_ok=True)
     
     if not queries_file.exists():
@@ -294,14 +356,16 @@ def main():
     
     # Show output locations
     if args.ir_only:
-        ir_dirs = list(output_base.glob("ir_only/query_*"))
+        ir_dirs = list((output_base / "ir_only").glob("*"))
+        ir_dirs = [d for d in ir_dirs if d.is_dir()]
         if ir_dirs:
             print(f"IR outputs saved to: {output_base / 'ir_only'}")
             print(f"  Found {len(ir_dirs)} query folders")
     else:
-        full_dirs = list(output_base.glob("full_pipeline/query_*"))
+        full_dirs = list(output_base.glob("*"))
+        full_dirs = [d for d in full_dirs if d.is_dir() and d.name != "ir_only"]
         if full_dirs:
-            print(f"Full pipeline outputs saved to: {output_base / 'full_pipeline'}")
+            print(f"Full pipeline outputs saved to: {output_base}")
             print(f"  Found {len(full_dirs)} query folders")
     
     print()

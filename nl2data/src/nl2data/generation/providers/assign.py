@@ -108,11 +108,37 @@ def assign_default_providers(board: Blackboard) -> Blackboard:
             colspec.provider = ProviderRef(name="faker.job")
             assigned_count += 1
             logger.debug(f"Assigned faker.job to {colspec.table}.{colspec.column}")
+        
+        # ID patterns (if not already assigned)
+        elif name.endswith("_id") or name.endswith("_code"):
+            # IDs and codes typically don't need providers (handled by distribution)
+            pass
+        
+        # Flag/boolean-like patterns
+        elif name.endswith("_flag") or name.startswith("is_") or name.startswith("has_"):
+            # Flags typically handled by distribution (BOOL type)
+            pass
+        
+        # Date/timestamp patterns
+        elif name.endswith("_date") or name.endswith("_time") or name.endswith("_timestamp"):
+            # Dates typically handled by distribution (DATE/DATETIME type)
+            pass
+        
+        # Name patterns (generic - catch remaining)
+        elif name.endswith("_name") and "name" not in [p for p in [
+            "email", "phone", "address", "city", "country", "company", "job"
+        ] if p in name]:
+            # Generic name pattern - use categorical or faker.name based on context
+            colspec.provider = ProviderRef(name="faker.name")
+            assigned_count += 1
+            logger.debug(f"Assigned faker.name to {colspec.table}.{colspec.column}")
 
     if assigned_count > 0:
         logger.info(
             f"Assigned {assigned_count} default providers based on column name heuristics"
         )
+    else:
+        logger.debug("No default providers assigned (all columns already have providers or don't match patterns)")
 
     return board
 

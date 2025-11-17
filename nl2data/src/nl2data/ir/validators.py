@@ -51,8 +51,8 @@ def validate_logical(ir: DatasetIR) -> List[QaIssue]:
                     stage="LogicalIR",
                     code="MISSING_PK",
                     location=table_name,
-                    message=f"{table_name}: missing primary key",
-                    details={"table": table_name},
+                    message=f"{table_name}: missing primary key. ALL tables must have at least one primary key column.",
+                    details={"table": table_name, "kind": table.kind},
                 )
             )
 
@@ -177,6 +177,168 @@ def validate_generation(ir: DatasetIR) -> List[QaIssue]:
     return issues
 
 
+def validate_derived_columns(ir: DatasetIR) -> List[QaIssue]:
+    """
+    Validate that derived columns are properly specified.
+    
+    Checks:
+    1. Every column in logical schema has a generation spec
+    2. Derived columns have valid expressions
+    3. Derived column dependencies exist
+    4. Dimension columns referenced in derived expressions exist
+    
+    Args:
+        ir: DatasetIR to validate
+    
+    Returns:
+        List of QaIssue objects
+    """
+    issues: List[QaIssue] = []
+    tables = ir.logical.tables
+    
+    # Build set of columns with generation specs
+    gen_specs = {(cg.table, cg.column) for cg in ir.generation.columns}
+    
+    # Check 1: Every logical column has a generation spec
+    for table_name, table in tables.items():
+        for col in table.columns:
+            if (table_name, col.name) not in gen_specs:
+                issues.append(
+                    QaIssue(
+                        stage="GenerationIR",
+                        code="MISSING_GEN_SPEC",
+                        location=f"{table_name}.{col.name}",
+                        message=f"Column '{col.name}' in table '{table_name}' has no generation specification. "
+                                f"It must be either sampled (with a distribution) or derived (with an expression).",
+                        details={"table": table_name, "column": col.name},
+                    )
+                )
+    
+    # Check 2: Derived columns have valid expressions
+    from nl2data.ir.generation import DistDerived
+    from nl2data.generation.derived_program import compile_derived
+    
+    for cg in ir.generation.columns:
+        if isinstance(cg.distribution, DistDerived):
+            dist = cg.distribution
+            # Try to compile expression
+            try:
+                prog = compile_derived(dist.expression, dist.dtype)
+            except Exception as e:
+                issues.append(
+                    QaIssue(
+                        stage="GenerationIR",
+                        code="INVALID_DERIVED_EXPR",
+                        location=f"{cg.table}.{cg.column}",
+                        message=f"Invalid derived expression for '{cg.table}.{cg.column}': {e}",
+                        details={
+                            "table": cg.table,
+                            "column": cg.column,
+                            "expression": dist.expression,
+                            "error": str(e),
+                        },
+                    )
+                )
+                continue
+            
+            # Check 3: Dependencies exist
+            table = tables.get(cg.table)
+            if table:
+                # Build map of all columns across all tables for better error messages
+                all_table_cols = {}
+                for tname, t in tables.items():
+                    all_table_cols[tname] = {c.name for c in t.columns}
+                
+                for dep in prog.dependencies:
+                    # Check if dependency is a column in the same table
+                    if dep not in {c.name for c in table.columns}:
+                        # Check dimension tables via foreign keys
+                        found_in_dim = False
+                        found_in_table = None
+                        for fk in table.foreign_keys:
+                            ref_table = tables.get(fk.ref_table)
+                            if ref_table and dep in {c.name for c in ref_table.columns}:
+                                found_in_dim = True
+                                found_in_table = fk.ref_table
+                                break
+                        
+                        # If not found in dimensions, check all other tables
+                        if not found_in_dim:
+                            for tname, cols in all_table_cols.items():
+                                if dep in cols:
+                                    found_in_table = tname
+                                    break
+                        
+                        # Issue if: not in same table and not in dimension
+                        # (Even if found in another table, it's still an issue if not accessible via FK)
+                        if not found_in_dim:
+                            # Build helpful error message with suggestions
+                            available_cols = []
+                            for tname, cols in all_table_cols.items():
+                                available_cols.extend([f"{tname}.{c}" for c in cols])
+                            
+                            # Find similar column names (fuzzy match)
+                            similar_cols = []
+                            dep_lower = dep.lower()
+                            for tname, cols in all_table_cols.items():
+                                for col in cols:
+                                    if dep_lower in col.lower() or col.lower() in dep_lower:
+                                        similar_cols.append(f"{tname}.{col}")
+                            
+                            error_msg = (
+                                f"Derived column '{cg.table}.{cg.column}' depends on '{dep}' "
+                                f"which does not exist in table '{cg.table}' or its dimension tables."
+                            )
+                            
+                            if similar_cols:
+                                error_msg += f" Did you mean: {', '.join(similar_cols[:5])}?"
+                            
+                            # Add architectural limitation warnings
+                            if found_in_table and found_in_table != cg.table:
+                                # Column exists in another table
+                                ref_table_obj = tables.get(found_in_table)
+                                is_dimension = ref_table_obj and ref_table_obj.kind == "dimension"
+                                if not is_dimension:
+                                    # Cross-fact-table reference detected
+                                    error_msg += (
+                                        f" Note: Column '{dep}' exists in fact table '{found_in_table}' but cross-fact-table "
+                                        f"references are not currently supported. Consider using a dimension table lookup instead."
+                                    )
+                                else:
+                                    # It's a dimension but not joined via FK - suggest adding FK
+                                    error_msg += (
+                                        f" Note: Column '{dep}' exists in dimension table '{found_in_table}' but there's no "
+                                        f"foreign key relationship. Ensure the fact table has a foreign key to '{found_in_table}'."
+                                    )
+                            elif found_in_table is None:
+                                # Column doesn't exist anywhere
+                                error_msg += " Column does not exist in any table."
+                            
+                            issues.append(
+                                QaIssue(
+                                    stage="GenerationIR",
+                                    code="MISSING_DERIVED_DEP",
+                                    location=f"{cg.table}.{cg.column}",
+                                    message=error_msg,
+                                    details={
+                                        "table": cg.table,
+                                        "column": cg.column,
+                                        "dependency": dep,
+                                        "expression": dist.expression,
+                                        "available_columns": available_cols[:20],  # Limit to avoid huge messages
+                                        "similar_columns": similar_cols[:5],
+                                    },
+                                )
+                            )
+    
+    if issues:
+        logger.warning(f"Derived column validation found {len(issues)} issues")
+    else:
+        logger.info("Derived column validation passed")
+    
+    return issues
+
+
 def validate_dataset(ir: DatasetIR) -> List[QaIssue]:
     """
     Validate complete dataset IR.
@@ -190,6 +352,7 @@ def validate_dataset(ir: DatasetIR) -> List[QaIssue]:
     issues: List[QaIssue] = []
     issues.extend(validate_logical(ir))
     issues.extend(validate_generation(ir))
+    issues.extend(validate_derived_columns(ir))
 
     if issues:
         logger.warning(f"Dataset validation found {len(issues)} issues")

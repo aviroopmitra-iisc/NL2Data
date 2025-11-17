@@ -13,7 +13,7 @@ You must return a JSON object matching this structure:
       "columns": [
         {
           "name": "column_name",
-          "sql_type": "INT32" | "INT64" | "FLOAT32" | "FLOAT64" | "TEXT" | "DATE" | "DATETIME" | "BOOL",
+          "sql_type": "INT" | "FLOAT" | "TEXT" | "DATE" | "DATETIME" | "BOOL",
           "nullable": bool,
           "unique": bool,
           "role": "primary_key" | "foreign_key" | "measure" | "attribute" | null,
@@ -36,14 +36,91 @@ Key guidelines:
 - Convert entities to tables
 - Convert attributes to columns with appropriate SQL types
 - Identify fact tables (large, transactional) vs dimension tables (small, descriptive)
-- Set primary keys (typically single-column IDs)
+- Set primary keys: CRITICAL - EVERY table MUST have a non-empty primary_key array
+  * Dimension tables: typically single-column IDs (e.g., ["customer_id"])
+  * Fact tables with time-series: use composite keys (e.g., ["timestamp", "household_id"])
+  * Fact tables without natural composite key: add surrogate key (e.g., ["order_id"], ["transaction_id"])
+  * NEVER leave primary_key as empty array []
+- Examples:
+  * Time-series fact: {"primary_key": ["timestamp", "entity_id"]}
+  * Transaction fact: {"primary_key": ["order_id"]}
+  * Dimension: {"primary_key": ["customer_id"]}
 - Set foreign keys based on relationships
-- Use appropriate SQL types (INT32/INT64 for integers, TEXT for strings, DATE/DATETIME for dates)
+- FOREIGN KEYS FOR DERIVED COLUMN DEPENDENCIES (CRITICAL):
+  * If a derived column in a fact table references a column from a dimension table, you MUST add a foreign key
+  * Example: If fact_orders.tax_rate depends on dim_tax_rate_policy.base_rate, add:
+    - Column in fact_orders: {"name": "tax_rate_policy_id", "sql_type": "INT", "role": "foreign_key", "references": "dim_tax_rate_policy.policy_id"}
+    - Foreign key entry: {"column": "tax_rate_policy_id", "ref_table": "dim_tax_rate_policy", "ref_column": "policy_id"}
+  * Another example: If metric_readings.slo_latency_threshold_ms depends on plan_tiers.base_slo_latency_threshold_ms, add:
+    - Column in metric_readings: {"name": "plan_tier_id", "sql_type": "INT", "role": "foreign_key", "references": "plan_tiers.plan_tier_id"}
+    - Foreign key entry: {"column": "plan_tier_id", "ref_table": "plan_tiers", "ref_column": "plan_tier_id"}
+  * Check all derived column expressions (if mentioned in description) to identify dimension dependencies
+  * Common pattern: "X depends on Y from dimension Z" → add FK column to fact table pointing to dimension Z
+  * Another pattern: "X = function of dimension_column" → add FK to that dimension table
+- Use appropriate SQL types (INT for integers, FLOAT for decimals, TEXT for strings, DATE/DATETIME for dates)
+- CRITICAL: sql_type MUST be exactly one of: "INT", "FLOAT", "TEXT", "DATE", "DATETIME", "BOOL"
+  * Common mistakes to avoid: "INT32" (use "INT"), "INT64" (use "INT"), "INTEGER" (use "INT"), "FLOAT32" (use "FLOAT"), "FLOAT64" (use "FLOAT"), "VARCHAR" (use "TEXT"), "TIMESTAMP" (use "DATETIME")
 - Set row_count hints from RequirementIR scale hints
 - IMPORTANT: Mark columns as "unique": true when they should have unique values:
   * Primary key columns (always unique)
   * Name/identifier columns in dimension tables (e.g., "type_name", "zone_name", "category_name")
   * Any column that logically represents a distinct identifier or category name
+
+DERIVED COLUMNS (CRITICAL - READ CAREFULLY):
+
+Some columns in the description are computed from other columns, not sampled directly. These are called "derived columns". You MUST identify and add ALL of them to the logical schema.
+
+How to identify derived columns (check description for these patterns):
+- Phrases like "X = ...", "X is computed as ...", "X depends on ...", "X must be computed"
+- Arithmetic expressions: "cost = price * quantity", "total = subtotal + tax"
+- Conditional logic: "is_peak = 1 if hour in [7,9] else 0", "is_weekend = 1 if day_of_week is Saturday or Sunday else 0"
+- Date/time extractions: "billing_day = date part of timestamp", "hour_of_day = hour of timestamp"
+- Dimension lookups: "baseline_price = function of tariff_plan_id", "tax_rate depends on pickup_zone_id"
+- Chained calculations: "net_fare = gross_fare - discount_amount + tax_amount"
+
+Examples of derived columns (from actual queries):
+1. "billing_day = date part of timestamp"
+   → Add: {"name": "billing_day", "sql_type": "DATE", "nullable": false, "unique": false, "role": "attribute"}
+
+2. "is_peak_hour = 1 if hour_of_day in peak set else 0"
+   → Add: {"name": "is_peak_hour", "sql_type": "BOOL", "nullable": false, "unique": false, "role": "attribute"}
+
+3. "line_subtotal = unit_price * quantity"
+   → Add: {"name": "line_subtotal", "sql_type": "FLOAT", "nullable": false, "unique": false, "role": "measure"}
+
+4. "price_multiplier = dynamic_price_per_kwh / baseline_price_per_kwh"
+   → Add: {"name": "price_multiplier", "sql_type": "FLOAT", "nullable": false, "unique": false, "role": "measure"}
+
+5. "end_time = start_time + duration_minutes (in minutes)"
+   → Add: {"name": "end_time", "sql_type": "DATETIME", "nullable": false, "unique": false, "role": "attribute"}
+
+6. "rebate_amount = where(consumption_kwh > threshold, cost_before_rebate * rebate_rate, 0)"
+   → Add: {"name": "rebate_amount", "sql_type": "FLOAT", "nullable": false, "unique": false, "role": "measure"}
+
+Important rules for derived columns:
+- Derived columns are regular columns in the schema (add them to the columns array like any other column)
+- Set sql_type based on the expression result type:
+  * Arithmetic on numbers → FLOAT or INT
+  * Date extraction → DATE
+  * Boolean expressions → BOOL
+  * String operations → TEXT
+- Set role to "attribute" or "measure" based on semantics
+- Do NOT mark derived columns as primary keys or foreign keys
+- If a derived column depends on a dimension lookup (e.g., "baseline_price_per_kwh = function of tariff_plan_id"), ensure the dimension table has the required column (e.g., add "baseline_price_per_kwh" to dim_tariff_plan)
+
+DIMENSION TABLE ATTRIBUTES FOR DERIVED COLUMNS:
+- If description says "X depends on Y from dimension Z", add column Y to dimension Z
+- Examples:
+  * "tax_rate depends on pickup_zone_id" → add "tax_rate" to zones dimension
+  * "baseline_price_per_kwh = function of tariff_plan_id" → add "baseline_price_per_kwh" to tariff_plan dimension
+  * "shipping_cost = base_shipping_fee + per_km_rate * distance" → create shipping_method dimension with "base_shipping_fee" and "per_km_rate"
+
+VALIDATION CHECKLIST (before finishing):
+1. Every table has a non-empty primary_key array
+2. All derived columns mentioned in description are added to logical schema
+3. All dimension tables have columns needed for derived column lookups
+4. All foreign keys are created for derived column dependencies on dimension tables
+5. All foreign key references are valid (referenced tables and columns exist)
 
 Return ONLY the JSON object, no explanations or markdown formatting.
 

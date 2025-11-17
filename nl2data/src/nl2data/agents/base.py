@@ -1,6 +1,6 @@
 """Base agent and blackboard for multi-agent system."""
 
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel
 from nl2data.ir.requirement import RequirementIR
 from nl2data.ir.conceptual import ConceptualIR
@@ -50,7 +50,7 @@ class BaseAgent:
         # Default implementation calls run() for backward compatibility
         return self.run(board)
 
-    def _repair(self, board: Blackboard, qa_items: list) -> Blackboard:
+    def _repair(self, board: Blackboard, qa_items: List["QaIssue"]) -> Blackboard:
         """
         Repair IR given QA feedback.
 

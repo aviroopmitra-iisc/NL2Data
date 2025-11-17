@@ -183,7 +183,7 @@ def generate_dimension(
             if key in derived_reg.programs:
                 prog = derived_reg.programs[key]
                 try:
-                    df[col_name] = eval_derived(prog, df)
+                    df[col_name] = eval_derived(prog, df, rng=rng)
                 except Exception as e:
                     logger.error(
                         f"Failed to compute derived column '{col_name}' in table "

@@ -179,7 +179,7 @@ def _generate_query(spec, ir: DatasetIR) -> str:
             numeric_cols = [
                 c.name
                 for c in fact_table.columns
-                if c.sql_type in ("INT32", "INT64", "FLOAT32", "FLOAT64")
+                if c.sql_type in ("INT", "FLOAT")
             ]
             if numeric_cols:
                 col = numeric_cols[0]

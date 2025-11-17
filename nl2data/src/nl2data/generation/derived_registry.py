@@ -71,9 +71,17 @@ def topo_sort_columns(dep_map: Dict[str, Set[str]]) -> List[str]:
     # Check for cycles
     if len(result) < len(dep_map):
         remaining = set(dep_map.keys()) - set(result)
+        # Try to identify the cycle for better error message
+        cycle_info = []
+        for col in remaining:
+            deps = dep_map.get(col, set())
+            cycle_info.append(f"{col} (depends on: {', '.join(sorted(deps & remaining))})")
+        
         raise ValueError(
             f"Circular dependency detected in derived columns. "
-            f"Unresolved columns: {remaining}"
+            f"Unresolved columns: {sorted(remaining)}\n"
+            f"Cycle details: {'; '.join(cycle_info)}\n"
+            f"Hint: Break the cycle by making one of these columns a sampled column instead of derived."
         )
     
     return result

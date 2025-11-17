@@ -5,10 +5,8 @@ from pydantic import BaseModel, Field
 from .constraint_ir import ConstraintSpec
 
 SQLType = Literal[
-    "INT32",
-    "INT64",
-    "FLOAT32",
-    "FLOAT64",
+    "INT",
+    "FLOAT",
     "TEXT",
     "DATE",
     "DATETIME",

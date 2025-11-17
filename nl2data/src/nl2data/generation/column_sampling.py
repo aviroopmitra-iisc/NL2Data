@@ -30,9 +30,9 @@ def sample_fallback_column(
     Returns:
         Array of sampled values
     """
-    if col.sql_type in ("INT32", "INT64"):
+    if col.sql_type == "INT":
         return rng.integers(DEFAULT_INT_RANGE[0], DEFAULT_INT_RANGE[1], size=n, dtype=np.int64)
-    if col.sql_type in ("FLOAT32", "FLOAT64"):
+    if col.sql_type == "FLOAT":
         return rng.normal(loc=0.0, scale=1.0, size=n).astype(np.float64)
     if col.sql_type == "TEXT":
         return np.array([f"{col.name}_{i}" for i in range(n)])
@@ -68,7 +68,7 @@ def sample_primary_key_column(
     Returns:
         Array of unique primary key values
     """
-    if col.sql_type not in ("INT32", "INT64"):
+    if col.sql_type != "INT":
         # For non-integer PKs, use sequential IDs (fallback)
         # Note: Full sampling logic is in dim_generator to avoid circular imports
         return np.arange(1, n + 1, dtype=np.int64)
