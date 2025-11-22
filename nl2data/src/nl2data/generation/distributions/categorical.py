@@ -17,15 +17,17 @@ class CategoricalSampler(BaseSampler):
 
         Args:
             values: List of categorical values
-            probs: Optional probability distribution (must sum to 1)
+            probs: Optional probability distribution (will be normalized to sum to 1)
         """
         self.values = values
         if probs is not None:
-            if abs(sum(probs) - 1.0) > 1e-6:
-                raise ValueError("Probabilities must sum to 1.0")
             if len(probs) != len(values):
                 raise ValueError("Probabilities length must match values length")
-            self.probs = probs
+            # Normalize probabilities to sum to 1.0 (handles floating point precision issues)
+            total = sum(probs)
+            if total <= 0:
+                raise ValueError("Probabilities must be positive")
+            self.probs = [p / total for p in probs]
         else:
             # Uniform distribution
             self.probs = [1.0 / len(values)] * len(values)

@@ -3,8 +3,10 @@
 import sys
 import argparse
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict
+from typing import Tuple, Optional
 import traceback
+import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 # Add paths to sys.path
 project_root = Path(__file__).parent
@@ -12,7 +14,6 @@ sys.path.insert(0, str(project_root / "ui_streamlit"))
 sys.path.insert(0, str(project_root / "nl2data" / "src"))
 sys.path.insert(0, str(project_root))
 
-from pipeline_runner import run_pipeline
 from nl2data.agents.base import Blackboard
 from nl2data.utils.agent_factory import create_agent_sequence
 from nl2data.ir.dataset import DatasetIR
@@ -23,7 +24,6 @@ from nl2data.config.logging import setup_logging
 # Import test utilities
 from test_utils import (
     parse_queries,
-    check_existing_data,
     check_ir_exists,
     check_csv_files_exist,
     hash_query_content,
@@ -105,7 +105,7 @@ def test_ir_only(query_num: int, query_text: str, output_base: Path) -> Tuple[bo
         return False, error_msg, None
 
 
-def test_query(query_num: int, query_text: str, output_base: Path, ir_only: bool = False) -> Tuple[bool, str]:
+def test_query(query_num: int, query_text: str, output_base: Path, ir_only: bool = False, timeout_minutes: Optional[float] = None) -> Tuple[bool, str]:
     """Test a single query through the pipeline."""
     if ir_only:
         success, message, summary = test_ir_only(query_num, query_text, output_base)
@@ -175,12 +175,43 @@ def test_query(query_num: int, query_text: str, output_base: Path, ir_only: bool
             csv_file.unlink()
         
         try:
-            # Run data generation only
+            # Run data generation with optional timeout
             from nl2data.generation.engine.pipeline import generate_from_ir
             from nl2data.config.settings import get_settings
             
             settings = get_settings()
-            generate_from_ir(ir, data_dir, seed=settings.seed, chunk_rows=settings.chunk_rows)
+            
+            # Run generation with optional timeout
+            def run_generation():
+                generate_from_ir(ir, data_dir, seed=settings.seed, chunk_rows=settings.chunk_rows)
+            
+            start_time = time.time()
+            
+            if timeout_minutes is not None:
+                # Apply timeout if specified
+                timeout_seconds = timeout_minutes * 60
+                print(f"  - Timeout set to {timeout_minutes:.1f} minutes (will skip if table generation exceeds this)")
+                
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(run_generation)
+                    try:
+                        future.result(timeout=timeout_seconds)
+                        elapsed = time.time() - start_time
+                        print(f"  - Generation completed in {elapsed:.1f} seconds")
+                    except FutureTimeoutError:
+                        elapsed = time.time() - start_time
+                        print(f"[TIMEOUT] Query {query_num} exceeded {timeout_minutes:.1f} minute timeout after {elapsed:.1f} seconds")
+                        print(f"  - Skipping this query (table generation took too long)")
+                        # Clean up any partial files
+                        for csv_file in data_dir.glob("*.csv"):
+                            csv_file.unlink()
+                        return False, f"Timeout: table generation exceeded {timeout_minutes:.1f} minutes"
+            else:
+                # No timeout - run normally
+                print(f"  - No timeout constraint (running without time limit)")
+                run_generation()
+                elapsed = time.time() - start_time
+                print(f"  - Generation completed in {elapsed:.1f} seconds")
             
             # Verify files were generated
             csv_files = list(data_dir.glob("*.csv"))
@@ -192,6 +223,11 @@ def test_query(query_num: int, query_text: str, output_base: Path, ir_only: bool
             
         except Exception as e:
             error_msg = str(e)
+            # Check if it's a timeout error
+            if "Timeout" in error_msg or "timeout" in error_msg.lower():
+                print(f"[TIMEOUT] Query {query_num} timed out during Phase 2 (data generation)")
+                print(f"  Error: {error_msg}")
+                return False, error_msg
             print(f"[FAIL] Query {query_num} FAILED during Phase 2 (data generation)")
             print(f"  Error: {error_msg}")
             print(f"  Traceback:")
@@ -285,6 +321,12 @@ def main():
         default=None,
         help="Base output directory (default: test_output)",
     )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="Timeout in minutes for table generation per query. If exceeded, query is skipped. If not specified, no timeout is applied.",
+    )
     
     args = parser.parse_args()
     
@@ -314,6 +356,10 @@ def main():
     print("=" * 80)
     print(f"Mode: {'IR Generation Only' if args.ir_only else 'Full Pipeline (IR + Data Generation)'}")
     print(f"Output base: {output_base}")
+    if args.timeout is not None:
+        print(f"Timeout: {args.timeout:.1f} minutes per query (queries exceeding this will be skipped)")
+    else:
+        print(f"Timeout: None (no time limit)")
     print()
     
     print("Parsing queries from example queries.txt...")
@@ -338,7 +384,7 @@ def main():
     failed = 0
     
     for query_num, query_text in queries:
-        success, message = test_query(query_num, query_text, output_base, ir_only=args.ir_only)
+        success, message = test_query(query_num, query_text, output_base, ir_only=args.ir_only, timeout_minutes=args.timeout)
         results.append((query_num, success, message))
         if success:
             passed += 1

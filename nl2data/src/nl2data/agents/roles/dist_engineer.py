@@ -8,6 +8,7 @@ from nl2data.agents.tools.error_handling import handle_agent_error
 from nl2data.prompts.loader import load_prompt, render_prompt
 from nl2data.ir.generation import GenerationIR
 from nl2data.config.logging import get_logger
+from pydantic import ValidationError
 
 logger = get_logger(__name__)
 
@@ -17,7 +18,7 @@ def _pre_validate_derived_expressions(data: dict, logical_ir) -> None:
     Pre-validate derived expressions before IR validation.
     
     Checks:
-    - Invalid functions (datetime, normal, etc.)
+    - Invalid functions (datetime, random, etc. - note: normal, lognormal, pareto are now allowed)
     - Self-references (circular dependencies)
     - References to non-existent columns
     - Basic syntax issues
@@ -34,7 +35,9 @@ def _pre_validate_derived_expressions(data: dict, logical_ir) -> None:
         return
     
     tables = logical_ir.tables if logical_ir else {}
-    invalid_functions = {"datetime", "normal", "random", "uniform", "uniform_int", "uniform_float"}
+    # Only flag truly invalid functions (not in ALLOWED_FUNCS)
+    # Note: normal(), uniform(), lognormal(), pareto() are now ALLOWED in derived expressions
+    invalid_functions = {"datetime", "random", "uniform_int", "uniform_float"}
     
     for col_spec in data.get("columns", []):
         dist = col_spec.get("distribution", {})
@@ -44,10 +47,24 @@ def _pre_validate_derived_expressions(data: dict, logical_ir) -> None:
             col_name = col_spec.get("column", "")
             
             # Check for self-reference (circular dependency)
-            # Simple check: if column name appears as a standalone word in expression
-            # Use word boundaries to avoid false positives (e.g., "price" in "price_multiplier")
+            # Improved check: only flag if column name appears as a direct reference, NOT as a function call
+            # e.g., "day_of_week(timestamp)" is OK - it's calling a function, not referencing itself
             col_name_pattern = r'\b' + re.escape(col_name) + r'\b'
-            if re.search(col_name_pattern, expr, re.IGNORECASE):
+            matches = list(re.finditer(col_name_pattern, expr, re.IGNORECASE))
+            
+            # Check each match to see if it's a function call or a direct reference
+            is_self_reference = False
+            for match in matches:
+                start, end = match.span()
+                # Check if this match is followed by '(' (function call) - if so, it's NOT a self-reference
+                if end < len(expr) and expr[end:end+1].strip() == '(':
+                    # This is a function call like "day_of_week(...)", not a self-reference
+                    continue
+                # If we get here, it's a direct reference to the column name (self-reference)
+                is_self_reference = True
+                break
+            
+            if is_self_reference:
                 logger.error(
                     f"DistributionEngineer: Self-reference detected! "
                     f"Derived column '{table_name}.{col_name}' references itself in expression: {expr[:100]}. "
@@ -239,6 +256,333 @@ def _generate_missing_specs(logical_ir, data: dict) -> List[dict]:
     return missing_specs
 
 
+def _fix_table_name_mismatches(data: dict, valid_tables: set) -> dict:
+    """
+    Post-process generated IR to fix common table name mismatches.
+    
+    Common patterns:
+    - Singular vs plural: dim_card -> dim_cards, fact_transaction -> fact_transactions
+    - Case differences (handled by case-insensitive matching)
+    - Close string matches (using simple heuristics)
+    
+    Only fixes if there's a clear, unambiguous match.
+    
+    Args:
+        data: Generated IR data dict
+        valid_tables: Set of valid table names from LogicalIR
+        
+    Returns:
+        Modified data dict with fixed table names
+    """
+    if not valid_tables:
+        return data
+    
+    # Create mapping of invalid -> valid table names
+    invalid_tables = set()
+    for col in data.get("columns", []):
+        table_name = col.get("table", "")
+        if table_name and table_name not in valid_tables:
+            invalid_tables.add(table_name)
+    
+    if not invalid_tables:
+        return data
+    
+    # Build mapping: invalid_name -> valid_name
+    table_fixes = {}
+    
+    for invalid_name in invalid_tables:
+        best_match = None
+        best_score = 0
+        
+        # Try different matching strategies
+        for valid_name in valid_tables:
+            score = 0
+            
+            # Strategy 1: Exact match after removing common suffixes/prefixes
+            invalid_base = invalid_name.lower()
+            valid_base = valid_name.lower()
+            
+            # Strategy 2: Singular/plural matching
+            # Check if one is singular and other is plural
+            if invalid_base + 's' == valid_base or invalid_base == valid_base + 's':
+                score = 0.9
+            elif invalid_base + 'es' == valid_base or invalid_base == valid_base + 'es':
+                score = 0.9
+            elif invalid_base.rstrip('s') == valid_base or invalid_base == valid_base.rstrip('s'):
+                score = 0.8
+            
+            # Strategy 3: Substring matching (one contains the other)
+            if invalid_base in valid_base or valid_base in invalid_base:
+                # Prefer longer matches
+                overlap = min(len(invalid_base), len(valid_base)) / max(len(invalid_base), len(valid_base))
+                score = max(score, 0.7 * overlap)
+            
+            # Strategy 4: Levenshtein-like: count matching characters from start
+            # This handles cases like "dim_merchant" vs "dim_merchants"
+            min_len = min(len(invalid_base), len(valid_base))
+            matching_chars = 0
+            for i in range(min_len):
+                if invalid_base[i] == valid_base[i]:
+                    matching_chars += 1
+                else:
+                    break
+            
+            if matching_chars >= 5:  # At least 5 matching chars from start
+                similarity = matching_chars / max(len(invalid_base), len(valid_base))
+                score = max(score, 0.6 * similarity)
+            
+            # Strategy 5: Check if they share the same prefix (dim_, fact_, etc.)
+            invalid_parts = invalid_base.split('_')
+            valid_parts = valid_base.split('_')
+            if len(invalid_parts) >= 2 and len(valid_parts) >= 2:
+                if invalid_parts[0] == valid_parts[0]:  # Same prefix (dim_, fact_, etc.)
+                    # Check if the rest is similar
+                    invalid_suffix = '_'.join(invalid_parts[1:])
+                    valid_suffix = '_'.join(valid_parts[1:])
+                    if invalid_suffix + 's' == valid_suffix or invalid_suffix == valid_suffix + 's':
+                        score = max(score, 0.95)  # Very high confidence
+                    elif invalid_suffix in valid_suffix or valid_suffix in invalid_suffix:
+                        score = max(score, 0.75)
+            
+            # Strategy 6: Handle prefix-only differences (transactions vs fact_transactions)
+            # If one has a prefix (dim_/fact_) and the other doesn't, but the suffix matches
+            invalid_has_prefix = invalid_base.startswith('dim_') or invalid_base.startswith('fact_')
+            valid_has_prefix = valid_base.startswith('dim_') or valid_base.startswith('fact_')
+            
+            if invalid_has_prefix != valid_has_prefix:  # One has prefix, other doesn't
+                # Extract suffix (remove dim_/fact_ prefix)
+                invalid_suffix = invalid_base
+                valid_suffix = valid_base
+                
+                for prefix in ['dim_', 'fact_']:
+                    if invalid_suffix.startswith(prefix):
+                        invalid_suffix = invalid_suffix[len(prefix):]
+                    if valid_suffix.startswith(prefix):
+                        valid_suffix = valid_suffix[len(prefix):]
+                
+                # If suffixes match exactly (or with plural), high confidence
+                if invalid_suffix == valid_suffix:
+                    score = max(score, 0.95)  # Very high confidence
+                elif invalid_suffix + 's' == valid_suffix or invalid_suffix == valid_suffix + 's':
+                    score = max(score, 0.90)  # High confidence
+                elif invalid_suffix in valid_suffix or valid_suffix in invalid_suffix:
+                    # Partial match
+                    overlap = min(len(invalid_suffix), len(valid_suffix)) / max(len(invalid_suffix), len(valid_suffix))
+                    if overlap > 0.8:  # At least 80% overlap
+                        score = max(score, 0.85)
+            
+            if score > best_score:
+                best_score = score
+                best_match = valid_name
+        
+        # Only fix if we have a high-confidence match
+        if best_match and best_score >= 0.7:
+            table_fixes[invalid_name] = best_match
+            logger.info(
+                f"DistributionEngineer: Auto-fixing table name '{invalid_name}' -> '{best_match}' "
+                f"(confidence: {best_score:.2f})"
+            )
+    
+    # Apply fixes
+    if table_fixes:
+        # Fix columns
+        for col in data.get("columns", []):
+            table_name = col.get("table", "")
+            if table_name in table_fixes:
+                col["table"] = table_fixes[table_name]
+        
+        # Fix events
+        for event in data.get("events", []):
+            for effect in event.get("effects", []):
+                table_name = effect.get("table", "")
+                if table_name in table_fixes:
+                    effect["table"] = table_fixes[table_name]
+        
+        logger.info(
+            f"DistributionEngineer: Fixed {len(table_fixes)} table name(s): {table_fixes}"
+        )
+    
+    return data
+
+
+def _fix_provider_field_misuse(data: dict) -> dict:
+    """
+    Post-process generated IR to fix provider field misuse.
+    
+    LLM sometimes puts provider info in the distribution field:
+    - {"kind": "provider", "provider": "name"} 
+      -> Move to column-level provider field
+    
+    Args:
+        data: Generated IR data dict
+        
+    Returns:
+        Modified data dict with fixed provider fields
+    """
+    fixed_count = 0
+    
+    for col in data.get("columns", []):
+        dist = col.get("distribution", {})
+        
+        # Check if distribution has "kind": "provider" (wrong structure)
+        if isinstance(dist, dict) and dist.get("kind") == "provider":
+            # Extract provider info from distribution
+            provider_name = dist.get("provider") or dist.get("name")
+            
+            if provider_name:
+                # Convert simple string to proper provider structure
+                if isinstance(provider_name, str):
+                    # Handle cases like "name" -> "faker.name"
+                    if not provider_name.startswith("faker.") and not provider_name.startswith("mimesis."):
+                        # Try to infer faker provider
+                        provider_mapping = {
+                            "name": "faker.name",
+                            "email": "faker.email",
+                            "phone": "faker.phone_number",
+                            "phone_number": "faker.phone_number",
+                            "city": "faker.city",
+                            "country": "faker.country",
+                            "credit_card_number": "faker.credit_card_number",
+                            "company": "faker.company",
+                        }
+                        provider_name = provider_mapping.get(provider_name.lower(), f"faker.{provider_name}")
+                    
+                    # Set provider at column level
+                    col["provider"] = {
+                        "name": provider_name,
+                        "config": dist.get("config", {})
+                    }
+                    
+                    # Replace distribution with categorical (fallback)
+                    col["distribution"] = {
+                        "kind": "categorical",
+                        "domain": {"values": ["fake_value"], "probs": None}
+                    }
+                    
+                    fixed_count += 1
+                    logger.info(
+                        f"DistributionEngineer: Fixed provider misuse for {col.get('table', '?')}.{col.get('column', '?')}: "
+                        f"moved provider '{provider_name}' from distribution to provider field"
+                    )
+                else:
+                    # Provider is already a dict, just move it
+                    col["provider"] = provider_name
+                    col["distribution"] = {
+                        "kind": "categorical",
+                        "domain": {"values": ["fake_value"], "probs": None}
+                    }
+                    fixed_count += 1
+    
+    if fixed_count > 0:
+        logger.info(
+            f"DistributionEngineer: Fixed {fixed_count} provider field misuse(s)"
+        )
+    
+    return data
+
+
+def _fix_mixture_condition_format(data: dict) -> dict:
+    """
+    Post-process generated IR to fix mixture condition format issues.
+    
+    LLM sometimes outputs conditions as strings instead of dictionaries:
+    - "merchant_category in ('electronics', 'travel')" 
+      -> {"column": "merchant_category", "op": "in", "value": ["electronics", "travel"]}
+    - "category == 'electronics'"
+      -> {"column": "category", "op": "eq", "value": "electronics"}
+    
+    Args:
+        data: Generated IR data dict
+        
+    Returns:
+        Modified data dict with fixed condition formats
+    """
+    import re
+    
+    fixed_count = 0
+    
+    for col in data.get("columns", []):
+        dist = col.get("distribution", {})
+        if dist.get("kind") == "mixture":
+            components = dist.get("components", [])
+            for component in components:
+                condition = component.get("condition")
+                
+                # Skip if already a dict or None
+                if condition is None or isinstance(condition, dict):
+                    continue
+                
+                # Try to parse string condition
+                if isinstance(condition, str):
+                    try:
+                        # Pattern 1: "column in ('val1', 'val2', ...)"
+                        match = re.match(r'(\w+)\s+in\s+\(([^)]+)\)', condition)
+                        if match:
+                            column_name = match.group(1)
+                            values_str = match.group(2)
+                            # Parse values (remove quotes)
+                            values = [v.strip().strip("'\"") for v in values_str.split(',')]
+                            component["condition"] = {
+                                "column": column_name,
+                                "op": "in",
+                                "value": values
+                            }
+                            fixed_count += 1
+                            continue
+                        
+                        # Pattern 2: "column == 'value'" or "column = 'value'" or "column != 'value'"
+                        match = re.match(r'(\w+)\s*[=!]=\s*["\']([^"\']+)["\']', condition)
+                        if match:
+                            column_name = match.group(1)
+                            value = match.group(2)
+                            # Check for != first (inequality) before checking == or = (equality)
+                            # This prevents incorrectly classifying "!=" as "==" when checking for "="
+                            op = "ne" if "!=" in condition else "eq"
+                            component["condition"] = {
+                                "column": column_name,
+                                "op": op,
+                                "value": value
+                            }
+                            fixed_count += 1
+                            continue
+                        
+                        # Pattern 3: "column != 'value'"
+                        match = re.match(r'(\w+)\s*!=\s*["\']([^"\']+)["\']', condition)
+                        if match:
+                            column_name = match.group(1)
+                            value = match.group(2)
+                            component["condition"] = {
+                                "column": column_name,
+                                "op": "ne",
+                                "value": value
+                            }
+                            fixed_count += 1
+                            continue
+                        
+                        # If we can't parse it, set to None (no condition)
+                        logger.warning(
+                            f"DistributionEngineer: Could not parse condition '{condition}', "
+                            f"setting to None for {col.get('table', '?')}.{col.get('column', '?')}"
+                        )
+                        component["condition"] = None
+                        fixed_count += 1
+                        
+                    except Exception as e:
+                        logger.warning(
+                            f"DistributionEngineer: Error parsing condition '{condition}': {e}, "
+                            f"setting to None for {col.get('table', '?')}.{col.get('column', '?')}"
+                        )
+                        component["condition"] = None
+                        fixed_count += 1
+    
+    if fixed_count > 0:
+        logger.info(
+            f"DistributionEngineer: Fixed {fixed_count} mixture condition format(s)"
+        )
+    
+    return data
+
+
 def _fix_derived_expression_mistakes(data: dict) -> dict:
     """
     Auto-correct common LLM mistakes in derived expressions.
@@ -275,6 +619,53 @@ def _fix_derived_expression_mistakes(data: dict) -> dict:
         # If correction broke JSON, return original
         logger.warning("DistributionEngineer: Auto-correction broke JSON, using original")
         return data
+
+
+def _format_validation_error(error: Exception) -> str:
+    """
+    Format a Pydantic ValidationError into a clear, actionable message for the LLM.
+    
+    Args:
+        error: The ValidationError exception
+        
+    Returns:
+        A formatted error message with specific field paths and expected types
+    """
+    if isinstance(error, ValidationError):
+        error_messages = []
+        error_messages.append("The JSON structure failed validation. Here are the specific errors:")
+        
+        # Pydantic v2 ValidationError has errors() method that returns structured error info
+        for err in error.errors():
+            loc = " -> ".join(str(x) for x in err.get("loc", []))
+            msg = err.get("msg", "Validation error")
+            error_type = err.get("type", "")
+            input_value = err.get("input", None)
+            
+            # Build a clear error message
+            error_msg = f"\n- Field: {loc}"
+            error_msg += f"\n  Error: {msg}"
+            
+            # Add helpful context based on error type
+            if error_type == "string_type" and input_value is not None:
+                error_msg += f"\n  Issue: Expected a string, but got {type(input_value).__name__} with value {input_value}"
+                error_msg += f"\n  Fix: Convert the value to a string (e.g., {input_value} -> \"{input_value}\")"
+            elif error_type == "int_parsing" or error_type == "int_parsing_size":
+                error_msg += f"\n  Issue: Expected an integer, but got {type(input_value).__name__} with value {input_value}"
+            elif error_type == "float_parsing":
+                error_msg += f"\n  Issue: Expected a float, but got {type(input_value).__name__} with value {input_value}"
+            elif "missing" in error_type:
+                error_msg += f"\n  Fix: Add the missing required field"
+            
+            error_messages.append(error_msg)
+        
+        return "\n".join(error_messages)
+    else:
+        # For non-ValidationError exceptions, return a truncated summary
+        error_str = str(error)
+        if len(error_str) > 500:
+            error_str = error_str[:500] + "..."
+        return f"Validation error: {error_str}"
 
 
 class DistributionEngineer(BaseAgent):
@@ -346,6 +737,8 @@ class DistributionEngineer(BaseAgent):
                 try:
                     # Step 1: Call LLM and parse JSON
                     raw = chat(messages)
+                    # Append assistant's response to messages for conversation history
+                    messages.append({"role": "assistant", "content": raw})
                     data = extract_json(raw)
                     
                     # If this is a continuation attempt, merge with previous specs if needed
@@ -374,11 +767,20 @@ class DistributionEngineer(BaseAgent):
                     # Step 2: Post-process: Fix common LLM mistakes in derived expressions
                     data = _fix_derived_expression_mistakes(data)
                     
-                    # Step 3: Pre-validate derived expressions before saving IR
+                    # Step 3: Fix provider field misuse
+                    data = _fix_provider_field_misuse(data)
+                    
+                    # Step 4: Fix mixture condition format issues
+                    data = _fix_mixture_condition_format(data)
+                    
+                    # Step 5: Pre-validate derived expressions before saving IR
                     _pre_validate_derived_expressions(data, board.logical_ir)
                     
-                    # Step 4: Validate table names BEFORE validation
+                    # Step 6: Fix common table name mismatches (post-processing)
                     valid_tables = set(board.logical_ir.tables.keys())
+                    data = _fix_table_name_mismatches(data, valid_tables)
+                    
+                    # Step 7: Validate table names AFTER auto-fixing
                     gen_tables = {col.get("table", "") for col in data.get("columns", [])}
                     invalid_tables = gen_tables - valid_tables
                     
@@ -410,7 +812,7 @@ class DistributionEngineer(BaseAgent):
                             # Last attempt - raise error
                             raise ValueError(error_msg)
                     
-                    # Step 5: Check completeness and handle large schemas
+                    # Step 8: Check completeness and handle large schemas
                     total_columns = sum(len(t.columns) for t in board.logical_ir.tables.values())
                     generated_specs = len(data.get("columns", []))
                     
@@ -474,10 +876,10 @@ class DistributionEngineer(BaseAgent):
                                 f"Auto-generated {len(missing_specs)} missing generation specs"
                             )
                     
-                    # Step 6: Validate IR structure
+                    # Step 9: Validate IR structure
                     board.generation_ir = GenerationIR.model_validate(data)
                     
-                    # Step 7: Early validation - check for common issues immediately
+                    # Step 10: Early validation - check for common issues immediately
                     if board.logical_ir:
                         from nl2data.ir.dataset import DatasetIR
                         from nl2data.ir.validators import validate_generation, validate_derived_columns
@@ -488,13 +890,62 @@ class DistributionEngineer(BaseAgent):
                         
                         if gen_issues or derived_issues:
                             total_issues = len(gen_issues) + len(derived_issues)
-                            issue_summary = "; ".join([
-                                f"{issue.code}" for issue in (gen_issues + derived_issues)[:3]
-                            ])
-                            logger.warning(
-                                f"GenerationIR validation found {total_issues} issues: {issue_summary}"
-                            )
-                            # Don't fail here - let QACompiler catch it, but log for awareness
+                            all_issues = gen_issues + derived_issues
+                            
+                            # Define critical issue codes that should trigger retry
+                            CRITICAL_ISSUE_CODES = {
+                                "MISSING_DERIVED_DEP",  # Derived column references non-existent column
+                                "GEN_COL_MISSING",  # Generation spec references missing column
+                                "GEN_TABLE_MISSING",  # Generation spec references missing table
+                            }
+                            
+                            # Check if any critical issues exist
+                            critical_issues = [
+                                issue for issue in all_issues 
+                                if issue.code in CRITICAL_ISSUE_CODES
+                            ]
+                            
+                            if critical_issues:
+                                # Format error message for retry
+                                issue_summary = "; ".join([
+                                    f"{issue.code}" for issue in critical_issues[:3]
+                                ])
+                                
+                                # Build detailed error message with actionable guidance
+                                error_parts = [
+                                    f"GenerationIR validation found {len(critical_issues)} critical issue(s): {issue_summary}",
+                                    "",
+                                    "Issue details:"
+                                ]
+                                
+                                for issue in critical_issues[:5]:
+                                    error_parts.append(f"\n- {issue.code} at {issue.location}")
+                                    error_parts.append(f"  Problem: {issue.message}")
+                                    
+                                    # Add helpful suggestions from issue details if available
+                                    if hasattr(issue, 'details') and issue.details:
+                                        details = issue.details
+                                        if 'similar_columns' in details and details['similar_columns']:
+                                            error_parts.append(f"  Suggested fix: Use one of these columns instead: {', '.join(details['similar_columns'])}")
+                                        elif 'available_columns' in details and details['available_columns']:
+                                            error_parts.append(f"  Available columns: {', '.join(details['available_columns'][:10])}")
+                                
+                                error_msg = "\n".join(error_parts)
+                                
+                                logger.warning(
+                                    f"GenerationIR validation found {len(critical_issues)} critical issues: {issue_summary}"
+                                )
+                                # Raise ValueError to trigger retry mechanism
+                                raise ValueError(error_msg)
+                            else:
+                                # Non-critical issues - log warning but continue
+                                issue_summary = "; ".join([
+                                    f"{issue.code}" for issue in all_issues[:3]
+                                ])
+                                logger.warning(
+                                    f"GenerationIR validation found {total_issues} non-critical issues: {issue_summary}"
+                                )
+                                # Don't fail here - let QACompiler catch it, but log for awareness
                     
                     # Success! Exit retry loop
                     break
@@ -526,12 +977,15 @@ class DistributionEngineer(BaseAgent):
                     if attempt < max_retries - 1:
                         logger.warning(f"IR validation failed (attempt {attempt + 1}/{max_retries}): {e}")
                         logger.warning(f"Data that failed validation (first 1000 chars): {str(data)[:1000] if data else 'N/A'}")
-                        # Add a hint to the user message for retry
-                        error_summary = str(e)[:200]  # Truncate long error messages
+                        # Format error message clearly for the LLM
+                        formatted_error = _format_validation_error(e)
                         messages.append({
                             "role": "user",
-                            "content": f"The previous response failed validation. Error: {error_summary}. "
-                                      f"Please fix the JSON structure and ensure all required fields are present and correctly formatted."
+                            "content": (
+                                f"The previous response failed validation.\n\n{formatted_error}\n\n"
+                                f"Please fix these specific issues in your JSON response. Pay special attention to the field paths "
+                                f"and type conversions mentioned above."
+                            )
                         })
                     else:
                         # Last attempt failed

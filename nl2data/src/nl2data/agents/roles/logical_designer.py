@@ -1,9 +1,9 @@
 """Logical designer agent for relational schema design."""
 
 from nl2data.agents.base import BaseAgent, Blackboard
-from nl2data.agents.tools.llm_client import chat
-from nl2data.agents.tools.json_parser import extract_json, JSONParseError
+from nl2data.agents.tools.agent_retry import call_llm_with_retry
 from nl2data.agents.tools.error_handling import handle_agent_error
+from nl2data.agents.tools.json_parser import JSONParseError
 from nl2data.prompts.loader import load_prompt, render_prompt
 from nl2data.ir.logical import LogicalIR
 from nl2data.config.logging import get_logger
@@ -100,84 +100,29 @@ class LogicalDesigner(BaseAgent):
                 {"role": "user", "content": user_content},
             ]
 
-            # Retry logic for JSON parsing AND IR validation (max 2 attempts)
-            max_retries = 2
-            data = None
-            validation_error = None
+            # Use centralized retry utility with pre-processing for common LLM mistakes
+            board.logical_ir = call_llm_with_retry(
+                messages,
+                LogicalIR,
+                pre_process=_fix_common_llm_mistakes
+            )
             
-            for attempt in range(max_retries):
-                try:
-                    # Step 1: Call LLM and parse JSON
-                    raw = chat(messages)
-                    data = extract_json(raw)
-                    
-                    # Step 2: Auto-correct common LLM mistakes before validation
-                    data = _fix_common_llm_mistakes(data)
-                    
-                    # Step 3: Validate IR structure
-                    board.logical_ir = LogicalIR.model_validate(data)
-                    
-                    # Step 4: Early validation - check for common issues immediately
-                    # Create temporary DatasetIR for validation (only LogicalIR is available at this stage)
-                    from nl2data.ir.dataset import DatasetIR
-                    from nl2data.ir.generation import GenerationIR
-                    temp_ir = DatasetIR(
-                        logical=board.logical_ir,
-                        generation=GenerationIR(columns=[])  # Empty generation IR for logical-only validation
-                    )
-                    from nl2data.ir.validators import validate_logical
-                    validation_issues = validate_logical(temp_ir)
-                    if validation_issues:
-                        issue_summary = "; ".join([f"{issue.code}: {issue.message[:50]}" for issue in validation_issues[:3]])
-                        logger.warning(
-                            f"LogicalIR validation found {len(validation_issues)} issues: {issue_summary}"
-                        )
-                        # Don't fail here - let QACompiler catch it, but log for awareness
-                    
-                    # Success! Exit retry loop
-                    break
-                    
-                except JSONParseError as e:
-                    if attempt < max_retries - 1:
-                        logger.warning(f"JSON parsing failed (attempt {attempt + 1}/{max_retries}): {str(e)[:200]}")
-                        # Add a hint to the user message for retry with specific guidance
-                        error_hint = str(e)
-                        if "trailing comma" in error_hint.lower() or "Expecting ','" in error_hint:
-                            hint = "Please check for trailing commas and ensure all JSON syntax is correct. Return ONLY valid JSON, no markdown formatting."
-                        elif "Expecting property name" in error_hint or "quote" in error_hint.lower():
-                            hint = "Please ensure all keys are properly quoted with double quotes. Return ONLY valid JSON."
-                        else:
-                            hint = "Please return ONLY valid JSON, no markdown formatting or explanations. Ensure proper JSON syntax."
-                        
-                        messages.append({
-                            "role": "user",
-                            "content": hint
-                        })
-                    else:
-                        # Last attempt failed
-                        logger.error(f"JSON parsing failed after {max_retries} attempts: {e}")
-                        raise
-                        
-                except Exception as e:
-                    # IR validation error or other error
-                    validation_error = e
-                    if attempt < max_retries - 1:
-                        logger.warning(f"IR validation failed (attempt {attempt + 1}/{max_retries}): {e}")
-                        logger.warning(f"Data that failed validation (first 1000 chars): {str(data)[:1000] if data else 'N/A'}")
-                        # Add a hint to the user message for retry
-                        error_summary = str(e)[:200]  # Truncate long error messages
-                        messages.append({
-                            "role": "user",
-                            "content": f"The previous response failed validation. Error: {error_summary}. "
-                                      f"Please fix the JSON structure and ensure all required fields are present and correctly formatted. "
-                                      f"Remember: sql_type must be one of: INT, FLOAT, TEXT, DATE, DATETIME, BOOL"
-                        })
-                    else:
-                        # Last attempt failed
-                        logger.error(f"Validation error: {e}")
-                        if data:
-                            logger.error(f"Data that failed validation (first 2000 chars): {str(data)[:2000]}")
-                        raise
+            # Early validation - check for common issues immediately
+            # Create temporary DatasetIR for validation (only LogicalIR is available at this stage)
+            from nl2data.ir.dataset import DatasetIR
+            from nl2data.ir.generation import GenerationIR
+            temp_ir = DatasetIR(
+                logical=board.logical_ir,
+                generation=GenerationIR(columns=[])  # Empty generation IR for logical-only validation
+            )
+            from nl2data.ir.validators import validate_logical
+            validation_issues = validate_logical(temp_ir)
+            if validation_issues:
+                issue_summary = "; ".join([f"{issue.code}: {issue.message[:50]}" for issue in validation_issues[:3]])
+                logger.warning(
+                    f"LogicalIR validation found {len(validation_issues)} issues: {issue_summary}"
+                )
+                # Don't fail here - let QACompiler catch it, but log for awareness
 
             # Post-process: Fix common uniqueness issues
             # Mark name/type columns in dimension tables as unique

@@ -92,7 +92,12 @@ def test_phase1_with_evaluation(query_num: int, query_text: str, output_base: Pa
     print(f"\n{'='*80}")
     print(f"Testing Query {query_num} (Phase 1: IR Generation + Evaluation)")
     print(f"{'='*80}")
-    print(f"Description preview: {query_text[:100]}...")
+    try:
+        print(f"Description preview: {query_text[:100]}...")
+    except UnicodeEncodeError:
+        # Handle Unicode characters that can't be encoded in Windows console
+        safe_text = query_text[:100].encode('ascii', 'replace').decode('ascii')
+        print(f"Description preview: {safe_text}...")
     print()
     
     # Create hash-based output directory
@@ -155,8 +160,8 @@ def test_phase1_with_evaluation(query_num: int, query_text: str, output_base: Pa
         print(f"  - Tables: {eval_summary['num_tables']} ({', '.join(table_names)})")
         print(f"  - Total columns: {eval_summary['num_columns']}")
         print(f"  - Derived columns: {eval_summary['num_derived_columns']}")
-        print(f"  - Primary keys: {'✓ All tables have PKs' if eval_summary['has_primary_keys'] else '✗ Some tables missing PKs'}")
-        print(f"  - Foreign keys: {'✓ Present' if eval_summary['has_foreign_keys'] else '✗ None'}")
+        print(f"  - Primary keys: {'[OK] All tables have PKs' if eval_summary['has_primary_keys'] else '[FAIL] Some tables missing PKs'}")
+        print(f"  - Foreign keys: {'[OK] Present' if eval_summary['has_foreign_keys'] else '[OK] None'}")
         
         if eval_summary['validation_issues']:
             print(f"  - Validation issues: {len(eval_summary['validation_issues'])}")
@@ -165,12 +170,12 @@ def test_phase1_with_evaluation(query_num: int, query_text: str, output_base: Pa
             if len(eval_summary['validation_issues']) > 5:
                 print(f"      ... and {len(eval_summary['validation_issues']) - 5} more issues")
         else:
-            print(f"  - Validation: ✓ PASSED")
+            print(f"  - Validation: [OK] PASSED")
         
         if eval_summary['derived_columns_valid']:
-            print(f"  - Derived column compilation: ✓ PASSED ({eval_summary['derived_programs']} programs)")
+            print(f"  - Derived column compilation: [OK] PASSED ({eval_summary['derived_programs']} programs)")
         else:
-            print(f"  - Derived column compilation: ✗ FAILED")
+            print(f"  - Derived column compilation: [FAIL] FAILED")
             for error in eval_summary['derived_compilation_errors']:
                 print(f"      • {error[:200]}...")
         
@@ -231,14 +236,22 @@ def main():
     log_dir = project_root / "logs"
     log_dir.mkdir(exist_ok=True)
     log_file = log_dir / "test_phase1.log"
-    # Clear the log file at the start of each run
+    # Clear the log file at the start of each run (skip if file is locked)
     if log_file.exists():
-        log_file.unlink()
+        try:
+            log_file.unlink()
+        except PermissionError:
+            # Log file is locked (e.g., open in IDE), just continue
+            pass
     setup_logging(log_file=log_file)
     print(f"[INFO] Logging to file: {log_file}")
     print()
     
-    queries_file = project_root / "example queries.txt"
+    # Try JSON first, fall back to text for backward compatibility
+    queries_file_json = project_root / "example_queries.json"
+    queries_file_txt = project_root / "example queries.txt"
+    queries_file = queries_file_json if queries_file_json.exists() else queries_file_txt
+    
     output_base = Path(args.output_dir) if args.output_dir else project_root / "test_output"
     output_base.mkdir(parents=True, exist_ok=True)
     
@@ -252,7 +265,7 @@ def main():
     print(f"Output base: {output_base}")
     print()
     
-    print("Parsing queries from example queries.txt...")
+    print(f"Parsing queries from {queries_file.name}...")
     all_queries = parse_queries(queries_file)
     print(f"Found {len(all_queries)} queries")
     

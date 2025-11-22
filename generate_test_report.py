@@ -167,6 +167,355 @@ def format_evaluation_report_summary(eval_report: dict) -> str:
     return "\n".join(lines)
 
 
+def format_workload_details(ir: DatasetIR) -> str:
+    """Format workload IR details as markdown."""
+    lines = []
+    
+    if not ir.workload or not ir.workload.targets:
+        lines.append("**Status:** ⏸️ No workload specifications")
+        return "\n".join(lines)
+    
+    lines.append(f"**Total Workload Targets:** {len(ir.workload.targets)}")
+    lines.append("")
+    
+    for idx, target in enumerate(ir.workload.targets, 1):
+        lines.append(f"#### Workload Target {idx}")
+        lines.append("")
+        lines.append(f"**Type:** `{target.type}`")
+        
+        if target.query_hint:
+            lines.append(f"**Query Hint:** `{target.query_hint}`")
+        
+        if target.expected_skew:
+            lines.append(f"**Expected Skew:** `{target.expected_skew}`")
+        
+        if target.selectivity_hint:
+            lines.append(f"**Selectivity Hint:** `{target.selectivity_hint}`")
+        
+        if target.join_graph:
+            lines.append(f"**Join Graph:** {', '.join(target.join_graph)}")
+        
+        lines.append("")
+    
+    return "\n".join(lines)
+
+
+def format_distribution(dist) -> str:
+    """Format a distribution object as a string."""
+    if dist is None:
+        return "None"
+    
+    if hasattr(dist, 'kind'):
+        kind = dist.kind
+        if kind == "uniform":
+            return f"Uniform(low={dist.low}, high={dist.high})"
+        elif kind == "normal":
+            return f"Normal(mean={dist.mean}, std={dist.std})"
+        elif kind == "lognormal":
+            return f"Lognormal(mean={dist.mean}, sigma={dist.sigma})"
+        elif kind == "pareto":
+            return f"Pareto(alpha={dist.alpha}, xm={dist.xm})"
+        elif kind == "mixture":
+            comp_str = ", ".join([f"w={c.weight}" for c in dist.components[:3]])
+            if len(dist.components) > 3:
+                comp_str += f", ... ({len(dist.components)} components)"
+            return f"Mixture(components=[{comp_str}])"
+        elif kind == "zipf":
+            n_str = f", n={dist.n}" if dist.n else ""
+            return f"Zipf(s={dist.s}{n_str})"
+        elif kind == "seasonal":
+            weights_str = ", ".join([f"{k}={v}" for k, v in list(dist.weights.items())[:3]])
+            if len(dist.weights) > 3:
+                weights_str += f", ... ({len(dist.weights)} total)"
+            return f"Seasonal(granularity={dist.granularity}, weights=[{weights_str}])"
+        elif kind == "categorical":
+            values_str = ", ".join(dist.domain.values[:5])
+            if len(dist.domain.values) > 5:
+                values_str += f", ... ({len(dist.domain.values)} total)"
+            probs_str = ""
+            if dist.domain.probs:
+                probs_str = f", probs=[{', '.join([str(p) for p in dist.domain.probs[:5]])}]"
+            return f"Categorical(values=[{values_str}]{probs_str})"
+        elif kind == "derived":
+            deps_str = f", depends_on=[{', '.join(dist.depends_on)}]" if dist.depends_on else ""
+            dtype_str = f", dtype={dist.dtype}" if dist.dtype else ""
+            return f"Derived(expression=`{dist.expression}`{dtype_str}{deps_str})"
+        elif kind == "window":
+            part_str = f", partition_by={dist.partition_by}" if dist.partition_by else ""
+            frame_str = f"{dist.frame.type}({dist.frame.preceding})"
+            return f"Window(expression=`{dist.expression}`, order_by={dist.order_by}{part_str}, frame={frame_str})"
+    
+    return str(dist)
+
+
+def format_generation_details(ir: DatasetIR) -> str:
+    """Format generation IR details as markdown."""
+    lines = []
+    
+    if not ir.generation or not ir.generation.columns:
+        lines.append("**Status:** ⏸️ No generation specifications")
+        return "\n".join(lines)
+    
+    lines.append(f"**Total Column Specifications:** {len(ir.generation.columns)}")
+    lines.append("")
+    
+    # Group by table
+    by_table: Dict[str, List] = {}
+    for cg in ir.generation.columns:
+        by_table.setdefault(cg.table, []).append(cg)
+    
+    for table_name in sorted(by_table.keys()):
+        cols = by_table[table_name]
+        lines.append(f"#### Table: `{table_name}`")
+        lines.append("")
+        lines.append(f"**Columns:** {len(cols)}")
+        lines.append("")
+        
+        for cg in cols:
+            lines.append(f"**Column:** `{cg.column}`")
+            
+            if cg.distribution:
+                lines.append(f"  - **Distribution:** {format_distribution(cg.distribution)}")
+            
+            if cg.provider:
+                config_str = ""
+                if cg.provider.config:
+                    config_str = f", config={cg.provider.config}"
+                lines.append(f"  - **Provider:** `{cg.provider.name}`{config_str}")
+            
+            if not cg.distribution and not cg.provider:
+                lines.append(f"  - **Distribution:** ⚠️ None (will use fallback)")
+            
+            lines.append("")
+    
+    return "\n".join(lines)
+
+
+def format_schema_text(ir: DatasetIR) -> str:
+    """Format schema as a well-written text representation."""
+    lines = []
+    
+    if not ir.logical or not ir.logical.tables:
+        return "No tables defined in schema."
+    
+    lines.append(f"Schema Mode: {ir.logical.schema_mode.upper()}")
+    lines.append(f"Total Tables: {len(ir.logical.tables)}")
+    lines.append("")
+    lines.append("=" * 80)
+    lines.append("")
+    
+    # Separate fact and dimension tables
+    fact_tables = []
+    dim_tables = []
+    other_tables = []
+    
+    for table_name, table in sorted(ir.logical.tables.items()):
+        if table.kind == "fact":
+            fact_tables.append((table_name, table))
+        elif table.kind == "dimension":
+            dim_tables.append((table_name, table))
+        else:
+            other_tables.append((table_name, table))
+    
+    # Format dimension tables first
+    if dim_tables:
+        lines.append("DIMENSION TABLES")
+        lines.append("-" * 80)
+        lines.append("")
+        for table_name, table in dim_tables:
+            lines.extend(_format_table_text(table_name, table, ir))
+            lines.append("")
+    
+    # Format fact tables
+    if fact_tables:
+        lines.append("FACT TABLES")
+        lines.append("-" * 80)
+        lines.append("")
+        for table_name, table in fact_tables:
+            lines.extend(_format_table_text(table_name, table, ir))
+            lines.append("")
+    
+    # Format other tables
+    if other_tables:
+        lines.append("OTHER TABLES")
+        lines.append("-" * 80)
+        lines.append("")
+        for table_name, table in other_tables:
+            lines.extend(_format_table_text(table_name, table, ir))
+            lines.append("")
+    
+    # Format constraints
+    if ir.logical.constraints:
+        constraints = ir.logical.constraints
+        has_constraints = False
+        
+        if constraints.fds:
+            has_constraints = True
+            lines.append("CONSTRAINTS")
+            lines.append("-" * 80)
+            lines.append("")
+            lines.append("Functional Dependencies:")
+            for fd in constraints.fds:
+                lhs_str = ", ".join(fd.lhs)
+                rhs_str = ", ".join(fd.rhs)
+                lines.append(f"  {fd.table}: {lhs_str} → {rhs_str} (mode: {fd.mode})")
+            lines.append("")
+        
+        if constraints.implications:
+            if not has_constraints:
+                lines.append("CONSTRAINTS")
+                lines.append("-" * 80)
+                lines.append("")
+                has_constraints = True
+            lines.append("Implication Constraints:")
+            for impl in constraints.implications:
+                lines.append(f"  {impl.table}: IF condition THEN effect")
+            lines.append("")
+        
+        if constraints.composite_pks:
+            if not has_constraints:
+                lines.append("CONSTRAINTS")
+                lines.append("-" * 80)
+                lines.append("")
+            lines.append("Composite Primary Keys:")
+            for cpk in constraints.composite_pks:
+                cols_str = ", ".join(cpk.cols)
+                lines.append(f"  {cpk.table}: ({cols_str})")
+            lines.append("")
+    
+    return "\n".join(lines)
+
+
+def _format_table_text(table_name: str, table, ir: DatasetIR) -> List[str]:
+    """Format a single table as text."""
+    lines = []
+    
+    # Table header
+    kind_str = f" ({table.kind.upper()})" if table.kind else ""
+    row_count_str = f" - {table.row_count:,} rows" if table.row_count else ""
+    lines.append(f"Table: {table_name}{kind_str}{row_count_str}")
+    lines.append("")
+    
+    # Primary key
+    if table.primary_key:
+        pk_str = ", ".join(table.primary_key)
+        lines.append(f"  Primary Key: {pk_str}")
+    else:
+        lines.append("  Primary Key: [NONE]")
+    lines.append("")
+    
+    # Foreign keys
+    if table.foreign_keys:
+        lines.append("  Foreign Keys:")
+        for fk in table.foreign_keys:
+            lines.append(f"    {fk.column} → {fk.ref_table}.{fk.ref_column}")
+        lines.append("")
+    else:
+        lines.append("  Foreign Keys: [NONE]")
+        lines.append("")
+    
+    # Columns
+    lines.append("  Columns:")
+    lines.append("")
+    
+    # Find max column name length for alignment
+    max_name_len = max(len(col.name) for col in table.columns) if table.columns else 0
+    max_name_len = max(max_name_len, 20)  # Minimum width
+    
+    # Header
+    header = f"    {'Column Name':<{max_name_len}} {'Type':<12} {'Nullable':<10} {'Unique':<8} {'Role':<15}"
+    lines.append(header)
+    lines.append("    " + "-" * (max_name_len + 12 + 10 + 8 + 15))
+    
+    # Column rows
+    for col in table.columns:
+        nullable_str = "YES" if col.nullable else "NO"
+        unique_str = "YES" if col.unique else "NO"
+        role_str = col.role or "N/A"
+        refs_str = f" → {col.references}" if col.references else ""
+        
+        col_line = f"    {col.name:<{max_name_len}} {col.sql_type:<12} {nullable_str:<10} {unique_str:<8} {role_str:<15}{refs_str}"
+        lines.append(col_line)
+    
+    return lines
+
+
+def format_logical_schema_details(ir: DatasetIR) -> str:
+    """Format logical schema IR details as markdown."""
+    lines = []
+    
+    if not ir.logical or not ir.logical.tables:
+        lines.append("**Status:** ⏸️ No tables defined")
+        return "\n".join(lines)
+    
+    lines.append(f"**Schema Mode:** `{ir.logical.schema_mode}`")
+    lines.append(f"**Total Tables:** {len(ir.logical.tables)}")
+    lines.append("")
+    
+    # Format constraints
+    if ir.logical.constraints:
+        constraints = ir.logical.constraints
+        
+        if constraints.fds:
+            lines.append("**Functional Dependencies:**")
+            for fd in constraints.fds:
+                lines.append(f"  - `{fd.table}`: `{', '.join(fd.lhs)}` → `{', '.join(fd.rhs)}` (mode: {fd.mode})")
+            lines.append("")
+        
+        if constraints.implications:
+            lines.append("**Implication Constraints:**")
+            for impl in constraints.implications:
+                lines.append(f"  - `{impl.table}`: {len(impl.condition.children) if impl.condition.children else 1} condition(s)")
+            lines.append("")
+        
+        if constraints.composite_pks:
+            lines.append("**Composite Primary Keys:**")
+            for cpk in constraints.composite_pks:
+                lines.append(f"  - `{cpk.table}`: `{', '.join(cpk.cols)}`")
+            lines.append("")
+    
+    # Format each table
+    for table_name, table in sorted(ir.logical.tables.items()):
+        lines.append(f"#### Table: `{table_name}`")
+        lines.append("")
+        lines.append(f"**Kind:** `{table.kind or 'N/A'}`")
+        if table.row_count:
+            lines.append(f"**Row Count:** {table.row_count:,}")
+        lines.append("")
+        
+        # Primary key
+        if table.primary_key:
+            lines.append(f"**Primary Key:** `{', '.join(table.primary_key)}`")
+        else:
+            lines.append("**Primary Key:** ⚠️ None")
+        lines.append("")
+        
+        # Foreign keys
+        if table.foreign_keys:
+            lines.append(f"**Foreign Keys:** {len(table.foreign_keys)}")
+            for fk in table.foreign_keys:
+                lines.append(f"  - `{fk.column}` → `{fk.ref_table}.{fk.ref_column}`")
+            lines.append("")
+        else:
+            lines.append("**Foreign Keys:** None")
+            lines.append("")
+        
+        # Columns
+        lines.append(f"**Columns:** {len(table.columns)}")
+        lines.append("")
+        lines.append("| Column | Type | Nullable | Unique | Role |")
+        lines.append("|--------|------|----------|--------|------|")
+        for col in table.columns:
+            nullable = "✅" if col.nullable else "❌"
+            unique = "✅" if col.unique else "❌"
+            role = col.role or "N/A"
+            refs = f" (→ {col.references})" if col.references else ""
+            lines.append(f"| `{col.name}` | `{col.sql_type}` | {nullable} | {unique} | `{role}`{refs} |")
+        lines.append("")
+    
+    return "\n".join(lines)
+
+
 def format_query_section(
     query_num: int,
     query_text: str,
@@ -207,6 +556,32 @@ def format_query_section(
             # Show ALL derived columns with FULL expressions
             for table, col, expr in derived_cols:
                 lines.append(f"  - `{table}.{col}`: `{expr}`")
+        lines.append("")
+        
+        # Logical Schema Details
+        lines.append("### Logical Schema Details")
+        lines.append("")
+        lines.append(format_logical_schema_details(ir))
+        lines.append("")
+        
+        # Generation Details
+        lines.append("### Generation Specifications")
+        lines.append("")
+        lines.append(format_generation_details(ir))
+        lines.append("")
+        
+        # Workload Details
+        lines.append("### Workload Specifications")
+        lines.append("")
+        lines.append(format_workload_details(ir))
+        lines.append("")
+        
+        # Schema Text Representation
+        lines.append("### Schema Text Representation")
+        lines.append("")
+        lines.append("```")
+        lines.append(format_schema_text(ir))
+        lines.append("```")
         lines.append("")
         
         # Generate ER diagram if graphviz is available

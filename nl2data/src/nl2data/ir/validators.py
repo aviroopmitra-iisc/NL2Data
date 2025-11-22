@@ -1,7 +1,7 @@
 """Validators for IR models."""
 
 from dataclasses import dataclass, field
-from typing import Literal, Callable, List, TYPE_CHECKING
+from typing import Literal, Callable, List, Optional, TYPE_CHECKING
 from pydantic import ValidationError
 from .dataset import DatasetIR
 from nl2data.config.logging import get_logger
@@ -215,11 +215,48 @@ def validate_derived_columns(ir: DatasetIR) -> List[QaIssue]:
                 )
     
     # Check 2: Derived columns have valid expressions
-    from nl2data.ir.generation import DistDerived
+    from nl2data.ir.generation import DistDerived, DistWindow
     from nl2data.generation.derived_program import compile_derived
     
     for cg in ir.generation.columns:
-        if isinstance(cg.distribution, DistDerived):
+        if isinstance(cg.distribution, DistWindow):
+            # Validate window specifications
+            dist = cg.distribution
+            table = tables.get(cg.table)
+            if table:
+                # Check order_by column exists
+                if dist.order_by not in {c.name for c in table.columns}:
+                    issues.append(
+                        QaIssue(
+                            stage="GenerationIR",
+                            code="WINDOW_ORDER_BY_MISSING",
+                            location=f"{cg.table}.{cg.column}",
+                            message=f"Window column '{cg.table}.{cg.column}' references order_by column '{dist.order_by}' which does not exist in table '{cg.table}'.",
+                            details={
+                                "table": cg.table,
+                                "column": cg.column,
+                                "order_by": dist.order_by,
+                            },
+                        )
+                    )
+                
+                # Check partition_by columns exist
+                for part_col in dist.partition_by:
+                    if part_col not in {c.name for c in table.columns}:
+                        issues.append(
+                            QaIssue(
+                                stage="GenerationIR",
+                                code="WINDOW_PARTITION_BY_MISSING",
+                                location=f"{cg.table}.{cg.column}",
+                                message=f"Window column '{cg.table}.{cg.column}' references partition_by column '{part_col}' which does not exist in table '{cg.table}'.",
+                                details={
+                                    "table": cg.table,
+                                    "column": cg.column,
+                                    "partition_by": part_col,
+                                },
+                            )
+                        )
+        elif isinstance(cg.distribution, DistDerived):
             dist = cg.distribution
             # Try to compile expression
             try:
@@ -339,12 +376,302 @@ def validate_derived_columns(ir: DatasetIR) -> List[QaIssue]:
     return issues
 
 
-def validate_dataset(ir: DatasetIR) -> List[QaIssue]:
+def check_nuance_coverage(nl_text: Optional[str], ir: DatasetIR) -> List[QaIssue]:
+    """
+    Check if NL requirements are reflected in the IR (nuance coverage).
+    
+    Parses NL text for keywords and verifies that corresponding IR constructs exist.
+    
+    Args:
+        nl_text: Natural language description (optional)
+        ir: DatasetIR to check
+    
+    Returns:
+        List of QaIssue objects for missing nuances
+    """
+    issues: List[QaIssue] = []
+    
+    if not nl_text:
+        return issues
+    
+    nl_lower = nl_text.lower()
+    
+    # Expanded keyword to IR construct mappings
+    nuance_checks = {
+        "rolling": {
+            "keywords": ["rolling", "rolling mean", "rolling average", "rolling sum", "rolling count", "moving average", "moving window"],
+            "check": lambda ir: _has_window_operations(ir),
+            "construct": "window operations (DistWindow or rolling functions)"
+        },
+        "window": {
+            "keywords": ["window", "sliding window", "moving window", "last n days", "last 7 days", "last 30 days"],
+            "check": lambda ir: _has_window_operations(ir),
+            "construct": "window operations (DistWindow)"
+        },
+        "lag": {
+            "keywords": ["lag", "previous value", "prior value"],
+            "check": lambda ir: _has_lag_lead(ir),
+            "construct": "lag/lead functions"
+        },
+        "lead": {
+            "keywords": ["lead", "next value", "following value"],
+            "check": lambda ir: _has_lag_lead(ir),
+            "construct": "lead functions"
+        },
+        "incident": {
+            "keywords": ["incident", "event", "disruption", "outage", "failure", "storm", "campaign"],
+            "check": lambda ir: _has_events(ir),
+            "construct": "EventSpec"
+        },
+        "heavy_tail": {
+            "keywords": ["heavy tail", "heavy-tailed", "heavy tailed", "right-skewed", "right skewed", "skewed"],
+            "check": lambda ir: _has_heavy_tail_distribution(ir),
+            "construct": "lognormal or pareto distribution"
+        },
+        "log-normal": {
+            "keywords": ["log-normal", "lognormal", "log normal"],
+            "check": lambda ir: _has_lognormal(ir),
+            "construct": "lognormal distribution (DistLognormal)"
+        },
+        "pareto": {
+            "keywords": ["pareto", "power-law", "power law", "80/20", "80-20", "80 20"],
+            "check": lambda ir: _has_pareto(ir),
+            "construct": "pareto distribution (DistPareto)"
+        },
+        "mixture": {
+            "keywords": ["mixture", "multi-modal", "multimodal", "base traffic + spikes", "normal + incident"],
+            "check": lambda ir: _has_mixture(ir),
+            "construct": "mixture distribution (DistMixture)"
+        },
+        "zipf": {
+            "keywords": ["zipf", "zipfian"],
+            "check": lambda ir: _has_zipf(ir),
+            "construct": "Zipf distribution"
+        },
+        "proration": {
+            "keywords": ["proration", "prorate", "overlap", "interval"],
+            "check": lambda ir: _has_proration(ir),
+            "construct": "overlap_days() or interval functions"
+        },
+        "pay-day": {
+            "keywords": ["pay-day", "payday", "pay day", "salary day", "15th", "1st of month"],
+            "check": lambda ir: _has_seasonal_patterns(ir),
+            "construct": "seasonal patterns or day-of-month logic"
+        },
+        "surge": {
+            "keywords": ["surge", "peak", "spike", "burst", "traffic spike"],
+            "check": lambda ir: _has_surge_pattern(ir),
+            "construct": "mixture distribution or event-driven patterns"
+        },
+        "churn": {
+            "keywords": ["churn", "cancellation", "attrition", "within 30 days"],
+            "check": lambda ir: _has_churn_pattern(ir),
+            "construct": "conditional logic or derived columns"
+        },
+        "fraud": {
+            "keywords": ["fraud", "fraudulent", "anomaly", "anomalous"],
+            "check": lambda ir: _has_fraud_pattern(ir),
+            "construct": "mixture distribution or event-driven patterns"
+        },
+        "seasonal": {
+            "keywords": ["seasonal", "seasonality", "holiday", "weekend"],
+            "check": lambda ir: _has_seasonal_patterns(ir),
+            "construct": "seasonal distribution or day-of-week logic"
+        },
+    }
+    
+    # Check each nuance
+    for nuance_name, check_info in nuance_checks.items():
+        # Check if any keyword is present in NL text
+        keyword_found = any(kw in nl_lower for kw in check_info["keywords"])
+        
+        if keyword_found:
+            # Check if corresponding construct exists in IR
+            if not check_info["check"](ir):
+                issues.append(
+                    QaIssue(
+                        stage="GenerationIR",
+                        code="MISSING_NUANCE",
+                        location="nuance_coverage",
+                        message=f"NL mentions '{nuance_name}' but IR lacks {check_info['construct']}",
+                        details={
+                            "nuance": nuance_name,
+                            "keywords_found": [kw for kw in check_info["keywords"] if kw in nl_lower],
+                            "missing_construct": check_info["construct"]
+                        },
+                    )
+                )
+    
+    return issues
+
+
+def _has_window_operations(ir: DatasetIR) -> bool:
+    """Check if IR has window operations."""
+    from nl2data.ir.generation import DistWindow
+    from nl2data.generation.derived_registry import build_derived_registry
+    
+    # Check for DistWindow in generation specs
+    for cg in ir.generation.columns:
+        if isinstance(cg.distribution, DistWindow):
+            return True
+    
+    # Check for window functions in derived expressions
+    try:
+        reg = build_derived_registry(ir)
+        if reg.windows:
+            return True
+    except (ValueError, KeyError, AttributeError):
+        # Registry build failed or no windows found - continue checking
+        pass
+    
+    # Check for window function names in derived expressions
+    for cg in ir.generation.columns:
+        if hasattr(cg.distribution, 'expression'):
+            expr = str(cg.distribution.expression).lower()
+            if any(func in expr for func in ["rolling_mean", "rolling_sum", "rolling_count", "lag(", "lead("]):
+                return True
+    
+    return False
+
+
+def _has_lag_lead(ir: DatasetIR) -> bool:
+    """Check if IR has lag/lead functions."""
+    for cg in ir.generation.columns:
+        if hasattr(cg.distribution, 'expression'):
+            expr = str(cg.distribution.expression).lower()
+            if "lag(" in expr or "lead(" in expr:
+                return True
+    return False
+
+
+def _has_events(ir: DatasetIR) -> bool:
+    """Check if IR has events."""
+    return len(ir.generation.events) > 0
+
+
+def _has_lognormal(ir: DatasetIR) -> bool:
+    """Check if IR has lognormal distribution."""
+    from nl2data.ir.generation import DistLognormal
+    
+    # Check for DistLognormal in generation specs
+    for cg in ir.generation.columns:
+        if isinstance(cg.distribution, DistLognormal):
+            return True
+    
+    # Check for lognormal in derived expressions
+    for cg in ir.generation.columns:
+        if hasattr(cg.distribution, 'expression'):
+            expr = str(cg.distribution.expression).lower()
+            if "lognormal(" in expr:
+                return True
+    
+    return False
+
+
+def _has_pareto(ir: DatasetIR) -> bool:
+    """Check if IR has pareto distribution."""
+    from nl2data.ir.generation import DistPareto
+    
+    # Check for DistPareto in generation specs
+    for cg in ir.generation.columns:
+        if isinstance(cg.distribution, DistPareto):
+            return True
+    
+    # Check for pareto in derived expressions
+    for cg in ir.generation.columns:
+        if hasattr(cg.distribution, 'expression'):
+            expr = str(cg.distribution.expression).lower()
+            if "pareto(" in expr:
+                return True
+    
+    return False
+
+
+def _has_mixture(ir: DatasetIR) -> bool:
+    """Check if IR has mixture distribution."""
+    from nl2data.ir.generation import DistMixture
+    
+    # Check for DistMixture in generation specs
+    for cg in ir.generation.columns:
+        if isinstance(cg.distribution, DistMixture):
+            return True
+    
+    return False
+
+
+def _has_heavy_tail_distribution(ir: DatasetIR) -> bool:
+    """Check if IR has any heavy-tail distribution (lognormal or pareto)."""
+    return _has_lognormal(ir) or _has_pareto(ir)
+
+
+def _has_surge_pattern(ir: DatasetIR) -> bool:
+    """Check if IR has surge/spike patterns (mixture or events)."""
+    return _has_mixture(ir) or _has_events(ir)
+
+
+def _has_churn_pattern(ir: DatasetIR) -> bool:
+    """Check if IR has churn patterns (derived columns with conditional logic)."""
+    from nl2data.ir.generation import DistDerived
+    
+    for cg in ir.generation.columns:
+        if isinstance(cg.distribution, DistDerived):
+            expr = str(cg.distribution.expression).lower()
+            # Check for conditional logic that might indicate churn
+            if "where(" in expr or "if" in expr or "days(" in expr:
+                return True
+    
+    return False
+
+
+def _has_fraud_pattern(ir: DatasetIR) -> bool:
+    """Check if IR has fraud patterns (mixture or events)."""
+    return _has_mixture(ir) or _has_events(ir)
+
+
+def _has_zipf(ir: DatasetIR) -> bool:
+    """Check if IR has Zipf distribution."""
+    from nl2data.ir.generation import DistZipf
+    
+    for cg in ir.generation.columns:
+        if isinstance(cg.distribution, DistZipf):
+            return True
+    return False
+
+
+def _has_proration(ir: DatasetIR) -> bool:
+    """Check if IR has proration/overlap functions."""
+    for cg in ir.generation.columns:
+        if hasattr(cg.distribution, 'expression'):
+            expr = str(cg.distribution.expression).lower()
+            if "overlap_days" in expr or "prorate" in expr or "interval" in expr:
+                return True
+    return False
+
+
+def _has_seasonal_patterns(ir: DatasetIR) -> bool:
+    """Check if IR has seasonal patterns."""
+    from nl2data.ir.generation import DistSeasonal
+    
+    for cg in ir.generation.columns:
+        if isinstance(cg.distribution, DistSeasonal):
+            return True
+        
+        # Check for day-of-month logic in derived expressions
+        if hasattr(cg.distribution, 'expression'):
+            expr = str(cg.distribution.expression).lower()
+            if "day_of_month" in expr or "day_of_week" in expr:
+                return True
+    
+    return False
+
+
+def validate_dataset(ir: DatasetIR, nl_text: Optional[str] = None) -> List[QaIssue]:
     """
     Validate complete dataset IR.
 
     Args:
         ir: DatasetIR to validate
+        nl_text: Optional natural language description for nuance coverage check
 
     Returns:
         List of QaIssue objects (empty if validation passes)
@@ -353,6 +680,10 @@ def validate_dataset(ir: DatasetIR) -> List[QaIssue]:
     issues.extend(validate_logical(ir))
     issues.extend(validate_generation(ir))
     issues.extend(validate_derived_columns(ir))
+    
+    # Check nuance coverage if NL text provided
+    if nl_text:
+        issues.extend(check_nuance_coverage(nl_text, ir))
 
     if issues:
         logger.warning(f"Dataset validation found {len(issues)} issues")
@@ -493,6 +824,51 @@ def validate_logical_ir(board: "Blackboard") -> List[QaIssue]:
             )
 
     return issues
+
+
+def validate_logical_blackboard(board: "Blackboard") -> List[QaIssue]:
+    """
+    Validate logical IR from blackboard (for repair loop).
+    
+    Args:
+        board: Blackboard with LogicalIR
+        
+    Returns:
+        List of QaIssue objects
+    """
+    if board.logical_ir is None:
+        return []
+    
+    # Create temporary DatasetIR for validation
+    from .dataset import DatasetIR
+    from .generation import GenerationIR
+    temp_ir = DatasetIR(
+        logical=board.logical_ir,
+        generation=GenerationIR(columns=[])  # Empty for logical-only validation
+    )
+    return validate_logical(temp_ir)
+
+
+def validate_generation_blackboard(board: "Blackboard") -> List[QaIssue]:
+    """
+    Validate generation IR from blackboard (for repair loop).
+    
+    Args:
+        board: Blackboard with GenerationIR
+        
+    Returns:
+        List of QaIssue objects
+    """
+    if board.generation_ir is None or board.logical_ir is None:
+        return []
+    
+    # Create temporary DatasetIR for validation
+    from .dataset import DatasetIR
+    temp_ir = DatasetIR(
+        logical=board.logical_ir,
+        generation=board.generation_ir
+    )
+    return validate_generation(temp_ir)
 
 
 def collect_issues(

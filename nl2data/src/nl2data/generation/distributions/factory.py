@@ -6,16 +6,21 @@ from nl2data.ir.generation import (
     Distribution,
     DistUniform,
     DistNormal,
+    DistLognormal,
+    DistPareto,
+    DistPoisson,
+    DistExponential,
+    DistMixture,
     DistZipf,
     DistSeasonal,
     DistCategorical,
     DistDerived,
 )
-from .numeric import UniformSampler, NormalSampler
+from .numeric import UniformSampler, NormalSampler, LognormalSampler, ParetoSampler, PoissonSampler, ExponentialSampler
+from .mixture import MixtureSampler
 from .categorical import CategoricalSampler
 from .zipf import ZipfSampler
 from .seasonal import SeasonalDateSampler
-from .derived import DerivedSampler
 from nl2data.config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -40,6 +45,21 @@ def get_sampler(dist: Distribution, **ctx: Any) -> Any:
 
     if isinstance(dist, DistNormal):
         return NormalSampler(dist.mean, dist.std)
+
+    if isinstance(dist, DistLognormal):
+        return LognormalSampler(dist.mean, dist.sigma)
+
+    if isinstance(dist, DistPareto):
+        return ParetoSampler(dist.alpha, dist.xm)
+
+    if isinstance(dist, DistPoisson):
+        return PoissonSampler(dist.lam)
+
+    if isinstance(dist, DistExponential):
+        return ExponentialSampler(dist.scale)
+
+    if isinstance(dist, DistMixture):
+        return MixtureSampler(dist.components)
 
     if isinstance(dist, DistZipf):
         n = dist.n or ctx.get("n_items")

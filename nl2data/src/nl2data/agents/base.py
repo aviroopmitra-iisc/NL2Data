@@ -48,6 +48,7 @@ class BaseAgent:
             Updated blackboard
         """
         # Default implementation calls run() for backward compatibility
+        # This allows repair loop to work with existing agents that implement run()
         return self.run(board)
 
     def _repair(self, board: Blackboard, qa_items: List["QaIssue"]) -> Blackboard:

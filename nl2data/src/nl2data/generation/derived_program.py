@@ -25,19 +25,39 @@ ALLOWED_FUNCS = {
     "year",
     # Random functions
     "uniform",
+    # Distribution functions
+    "normal",
+    "lognormal",
+    "pareto",
+    # Type casting functions
+    "int",
+    "float",
+    "bool",
+    "str",
     # Null check functions
     "isnull",
     "notnull",
     # Weighted choice functions
     "weighted_choice",
     "weighted_choice_if",
+    # Conditional macro
+    "case_when",
+    # String operations
+    "concat",
+    "format",
+    "substring",
+    # Helper functions
+    "between",
+    "geo_distance",
+    "ts_diff",
+    "overlap_days",
 }
 
 # Allowed AST node types
 ALLOWED_BINOPS = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow)
 ALLOWED_UNARYOPS = (ast.UAdd, ast.USub, ast.Not)
 ALLOWED_BOOLOPS = (ast.And, ast.Or)
-ALLOWED_COMPARE_OPS = (ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.Eq, ast.NotEq, ast.Is, ast.IsNot)
+ALLOWED_COMPARE_OPS = (ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.Eq, ast.NotEq, ast.Is, ast.IsNot, ast.In, ast.NotIn)
 
 
 @dataclass
@@ -112,6 +132,8 @@ def compile_derived(expr: str, dtype: Optional[str] = None) -> DerivedProgram:
     
     # Track dependencies (column names)
     deps: Set[str] = set()
+    # Track function calls to distinguish from column references
+    function_calls: Set[str] = set()
     
     def visit(node: ast.AST) -> None:
         """Recursively visit AST nodes, validating and collecting dependencies."""
@@ -181,6 +203,8 @@ def compile_derived(expr: str, dtype: Optional[str] = None) -> DerivedProgram:
                     f"Function '{func_name}' not allowed. Allowed functions: {sorted(ALLOWED_FUNCS)}\n"
                     + (f"Hint: {suggestion}" if suggestion else "")
                 )
+            # Track this as a function call (not a column reference)
+            function_calls.add(func_name)
             for arg in node.args:
                 visit(arg)
             # Keyword arguments not supported for now
@@ -188,7 +212,7 @@ def compile_derived(expr: str, dtype: Optional[str] = None) -> DerivedProgram:
                 raise ValueError("Keyword arguments not supported in expressions")
         
         elif isinstance(node, ast.Name):
-            # This is a column reference
+            # This is a column reference (unless it's a function call, which we track separately)
             deps.add(node.id)
         
         elif isinstance(node, ast.Constant):
@@ -241,8 +265,10 @@ def compile_derived(expr: str, dtype: Optional[str] = None) -> DerivedProgram:
     # Visit the AST
     visit(tree)
     
-    # Remove function names from dependencies (they're not columns)
-    deps = {d for d in deps if d not in ALLOWED_FUNCS}
+    # Remove function names from dependencies, but only if they were actually called as functions
+    # If a name appears as both a function call AND a column reference, keep it as a dependency
+    # (it's a column that happens to share a name with a function, like 'month' column vs month() function)
+    deps = {d for d in deps if d not in function_calls}
     
     # Filter out Python keywords, built-ins, and common literals that aren't columns
     # These are often mistakenly extracted as dependencies

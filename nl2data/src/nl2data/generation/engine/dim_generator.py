@@ -17,6 +17,7 @@ from nl2data.generation.uniqueness import (
     enforce_unique_non_text_column,
 )
 from nl2data.generation.constants import DEFAULT_DIMENSION_ROWS
+from nl2data.generation.error_logging import log_error, log_error_with_recovery
 from nl2data.config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -58,9 +59,13 @@ def sample_column(
             # Enforce SQL type after sampling
             return enforce_column_type(result, col.sql_type, col.name, rng)
         except Exception as e:
-            logger.warning(
-                f"Failed to use provider {provider_ref.name} for {table.name}.{col.name}: {e}. "
-                f"Falling back to distribution."
+            log_error_with_recovery(
+                error=e,
+                recovery_action=f"Falling back to distribution for {table.name}.{col.name}",
+                context={'provider': provider_ref.name, 'provider_config': provider_ref.config},
+                operation="provider-based column sampling",
+                table_name=table.name,
+                column_name=col.name
             )
             # Fall through to distribution-based generation
     
@@ -95,14 +100,29 @@ def generate_dimension(
     Returns:
         DataFrame with generated data (including derived columns)
     """
+    import time
+    table_start = time.time()
     n = table.row_count or DEFAULT_DIMENSION_ROWS
-    logger.info(f"Generating dimension table '{table.name}' with {n} rows")
-
+    logger.info(f"Generating dimension table '{table.name}' with {n} rows, {len(table.columns)} columns")
+    
     # Build distribution and provider maps
+    map_start = time.time()
     gen_map = build_distribution_map(ir)
     provider_map = build_provider_map(ir)
+    map_time = time.time() - map_start
+    logger.debug(f"  Built distribution/provider maps in {map_time:.3f}s")
+    
+    # Log column details
+    base_cols = [col for col in table.columns if not isinstance(gen_map.get((table.name, col.name)), DistDerived)]
+    derived_cols_count = len(table.columns) - len(base_cols)
+    logger.debug(
+        f"  Columns: {len(base_cols)} base, {derived_cols_count} derived, "
+        f"{len([c for c in table.columns if c.role == 'primary_key'])} primary key(s), "
+        f"{len([c for c in table.columns if c.unique])} unique column(s)"
+    )
 
     # Phase 1: Generate base columns (non-derived)
+    base_start = time.time()
     base_data = {}
     for col in table.columns:
         dist = gen_map.get((table.name, col.name))
@@ -116,8 +136,11 @@ def generate_dimension(
             base_data[col.name] = sample_primary_key_column(col, dist, n, rng)
         else:
             base_data[col.name] = sample_column(table, col, dist, n, rng, provider_ref=provider_ref)
+            logger.debug(f"  Generated base column '{col.name}' ({col.sql_type})")
 
     df = pd.DataFrame(base_data)
+    base_time = time.time() - base_start
+    logger.debug(f"  Base columns generated in {base_time:.3f}s: {len(base_data)} columns")
 
     # Heuristic: For dimension tables, enforce uniqueness on type/category columns
     # even if not explicitly marked in IR (common LLM oversight)
@@ -174,7 +197,9 @@ def generate_dimension(
 
     # Phase 2: Compute derived columns in dependency order
     derived_cols = derived_reg.order.get(table.name, [])
+    derived_time = 0
     if derived_cols:
+        derived_start = time.time()
         logger.debug(
             f"Computing {len(derived_cols)} derived columns for '{table.name}'"
         )
@@ -183,14 +208,32 @@ def generate_dimension(
             if key in derived_reg.programs:
                 prog = derived_reg.programs[key]
                 try:
+                    col_start = time.time()
                     df[col_name] = eval_derived(prog, df, rng=rng)
+                    col_time = time.time() - col_start
+                    logger.debug(f"  Computed derived column '{col_name}' in {col_time:.3f}s")
                 except Exception as e:
-                    logger.error(
-                        f"Failed to compute derived column '{col_name}' in table "
-                        f"'{table.name}': {e}"
+                    log_error(
+                        error=e,
+                        context={
+                            'expression': prog.expr if hasattr(prog, 'expr') else 'N/A',
+                            'dependencies': getattr(prog, 'dependencies', []),
+                            'available_columns': list(df.columns)
+                        },
+                        operation="derived column computation",
+                        table_name=table.name,
+                        column_name=col_name
                     )
                     raise
+        derived_time = time.time() - derived_start
+        logger.debug(f"  All derived columns computed in {derived_time:.3f}s")
+    else:
+        logger.debug(f"  No derived columns to compute for '{table.name}'")
 
-    logger.info(f"Generated dimension table '{table.name}': {len(df)} rows")
+    total_time = time.time() - table_start
+    logger.info(
+        f"Generated dimension table '{table.name}': {len(df)} rows, {len(df.columns)} columns "
+        f"(base: {base_time:.3f}s, derived: {derived_time:.3f}s, total: {total_time:.3f}s)"
+    )
     return df
 

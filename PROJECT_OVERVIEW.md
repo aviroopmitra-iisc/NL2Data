@@ -23,11 +23,16 @@
 ### Key Capabilities
 - **Natural Language Processing**: Converts free-form text descriptions into structured database schemas
 - **Multi-Agent Pipeline**: Specialized agents handle different aspects (conceptual design, logical schema, distributions, workloads)
-- **Realistic Data Generation**: Supports Zipf, seasonal, categorical, and derived column distributions
+- **Realistic Data Generation**: Supports Zipf, seasonal, categorical, derived column, and window function distributions
+- **Window Functions**: Rolling aggregations, lag/lead operations with time-based and row-based windows
+- **Event System**: Global events that causally affect data generation (incidents, disruptions, campaigns)
+- **Advanced DSL**: Extended expression language with type casting, distributions, string operations, and helper functions
 - **Scalable Generation**: Handles millions of rows with streaming/chunked generation
 - **Comprehensive Evaluation**: Validates schema correctness, statistical properties, and workload performance
 - **Constraint System**: Functional dependencies, implications, and composite primary keys
-- **Self-Healing Pipeline**: Automatic repair loops with QA feedback
+- **Self-Healing Pipeline**: Automatic repair loops with QA feedback (✅ Integrated in Orchestrator)
+- **Quality Metrics Tracking**: Comprehensive metrics collection for monitoring and debugging (✅ Integrated)
+- **Constraint Enforcement**: Automatic enforcement of FDs, implications, and nullability (✅ Integrated)
 - **Provider System**: Faker, Mimesis, and geo-lookup providers for realistic data
 - **Advanced Evaluation**: Schema coverage, relational metrics, and table-level fidelity scores
 
@@ -258,13 +263,26 @@ Project v3/
 │   │   │   │   ├── categorical.py   # CategoricalSampler
 │   │   │   │   ├── zipf.py          # ZipfSampler
 │   │   │   │   ├── seasonal.py     # SeasonalDateSampler
-│   │   │   │   └── derived.py       # DerivedSampler (legacy)
+│   │   │   │   # derived.py removed (deprecated - use derived expression engine)
 │   │   │   └── engine/              # Generation pipeline
 │   │   │       ├── __init__.py
 │   │   │       ├── pipeline.py      # Main generation pipeline
 │   │   │       ├── dim_generator.py  # Dimension table generator
 │   │   │       ├── fact_generator.py # Fact table generator (streaming)
 │   │   │       └── writer.py        # CSV writer utilities
+│   │   │   ├── window_eval.py      # Window function evaluation
+│   │   │   ├── event_eval.py       # Event effect application
+│   │   │   ├── enforce.py          # Constraint enforcement
+│   │   │   ├── facts.py            # Fact generation utilities
+│   │   │   ├── allocator.py        # Memory-safe FK allocation
+│   │   │   ├── type_enforcement.py # Type enforcement utilities
+│   │   │   ├── uniqueness.py      # Uniqueness enforcement utilities
+│   │   │   ├── ir_helpers.py      # IR extraction utilities
+│   │   │   └── constants.py       # Generation constants
+│   │   │
+│   │   ├── monitoring/             # Quality metrics tracking
+│   │   │   ├── __init__.py
+│   │   │   └── quality_metrics.py  # Agent and query metrics collection
 │   │   │
 │   │   ├── evaluation/              # Evaluation framework
 │   │   │   ├── __init__.py
@@ -291,7 +309,9 @@ Project v3/
 │   │
 │   └── tests/                       # Test suite
 │       ├── __init__.py
-│       └── test_ir_models.py        # IR model tests
+│       ├── test_ir_models.py        # IR model tests
+│       ├── test_derived_dsl.py      # Derived DSL tests
+│       └── test_derived_regression.py  # Regression tests
 │
 ├── ui_streamlit/                    # Streamlit web UI
 │   ├── app.py                       # Main Streamlit app
@@ -302,6 +322,7 @@ Project v3/
 │       └── latest_run/              # Latest generation output
 │
 ├── test_all_queries.py              # Batch testing script
+├── test_phase1_evaluation.py        # Phase 1 IR evaluation script
 ├── test_utils/                      # Test utilities module
 │   ├── __init__.py
 │   ├── query_parser.py              # Query parsing utilities
@@ -309,6 +330,7 @@ Project v3/
 │   ├── report_formatter.py         # Evaluation report formatting
 │   └── test_helpers.py             # Test helper functions
 ├── example queries.txt              # Example NL descriptions
+├── Improvement.md                   # Improvement roadmap and implementation guide
 ├── Instructions.md                  # Detailed instructions
 ├── UI.md                            # UI documentation
 └── PROJECT_OVERVIEW.md              # This file
@@ -692,13 +714,26 @@ schema_mode: Literal["oltp", "star", "snowflake"] = "star"
 
 ### 2. Multi-Agent System
 
+The multi-agent system is the core orchestration mechanism that transforms natural language descriptions into structured Intermediate Representations (IRs). It uses a **Blackboard Pattern** for agent communication, where specialized agents sequentially refine the specification through progressive IR transformations.
+
 #### 2.1 Blackboard Pattern (`agents/base.py`)
 
-**Purpose**: Shared state between agents.
+**Purpose**: Centralized shared state for inter-agent communication.
+
+**Architecture**:
+The Blackboard is a Pydantic model that serves as the single source of truth for all IRs during pipeline execution. It implements a **write-once, read-many** pattern where each agent:
+1. **Reads** from previous IRs (its inputs)
+2. **Writes** its output IR (its contribution)
+3. **Never modifies** IRs written by other agents
 
 ```python
 class Blackboard(BaseModel):
-    """Shared blackboard for multi-agent communication."""
+    """
+    Shared blackboard for multi-agent communication.
+    
+    Agents read from and write to the blackboard to pass
+    intermediate representations between stages.
+    """
     requirement_ir: Optional[RequirementIR] = None
     conceptual_ir: Optional[ConceptualIR] = None
     logical_ir: Optional[LogicalIR] = None
@@ -708,58 +743,439 @@ class Blackboard(BaseModel):
 ```
 
 **Design Rationale**:
-- Agents read from and write to blackboard
-- Enables sequential pipeline execution
-- Type-safe with Pydantic validation
+- **Type Safety**: Pydantic validation ensures IRs are valid before being stored
+- **Immutability**: Once an IR is written, it's not modified by subsequent agents (agents create new IRs)
+- **Sequential Dependencies**: Clear data flow - each agent depends on previous IRs
+- **Debugging**: Can inspect blackboard state at any point in the pipeline
+- **Testability**: Can create blackboards with specific IRs for unit testing
 
-#### 2.2 Base Agent (`agents/base.py`)
+**Blackboard Lifecycle**:
+```
+Initial State:
+  Blackboard(
+    requirement_ir=None,
+    conceptual_ir=None,
+    logical_ir=None,
+    generation_ir=None,
+    workload_ir=None,
+    dataset_ir=None
+  )
+
+After ManagerAgent:
+  Blackboard(
+    requirement_ir=RequirementIR(...),  ← Written by ManagerAgent
+    conceptual_ir=None,
+    ...
+  )
+
+After ConceptualDesigner:
+  Blackboard(
+    requirement_ir=RequirementIR(...),  ← Read by ConceptualDesigner
+    conceptual_ir=ConceptualIR(...),   ← Written by ConceptualDesigner
+    ...
+  )
+
+... and so on for each agent
+```
+
+**Access Patterns**:
+- **ManagerAgent**: Writes `requirement_ir` (no dependencies)
+- **ConceptualDesigner**: Reads `requirement_ir`, writes `conceptual_ir`
+- **LogicalDesigner**: Reads `requirement_ir` + `conceptual_ir`, writes `logical_ir`
+- **DistributionEngineer**: Reads `requirement_ir` + `logical_ir`, writes `generation_ir`
+- **WorkloadDesigner**: Reads `requirement_ir` + `logical_ir`, writes `workload_ir`
+- **QACompilerAgent**: Reads all IRs, writes `dataset_ir` (combines all)
+
+#### 2.2 Base Agent Architecture (`agents/base.py`)
+
+**Purpose**: Abstract base class defining the agent interface and common behavior.
+
+**Complete BaseAgent Implementation**:
 
 ```python
 class BaseAgent:
-    """Base class for all agents."""
-    name: str = "base_agent"
+    """Base class for all agents in the multi-agent system."""
+    
+    name: str = "base_agent"  # Must be overridden by subclasses
+    
+    def _produce(self, board: Blackboard) -> Blackboard:
+        """
+        Produce initial IR from blackboard.
+        
+        This is the main production method that agents should implement.
+        By default, it calls run() for backward compatibility.
+        
+        Process:
+        1. Read required IRs from blackboard
+        2. Load prompts (system + user templates)
+        3. Render user prompt with IR data
+        4. Call LLM API
+        5. Extract JSON from response
+        6. Validate as IR model (Pydantic)
+        7. Write IR to blackboard
+        8. Return updated blackboard
+        
+        Args:
+            board: Current blackboard state
+            
+        Returns:
+            Updated blackboard with new IR written
+        """
+        # Default implementation calls run() for backward compatibility
+        return self.run(board)
+    
+    def _repair(self, board: Blackboard, qa_items: List["QaIssue"]) -> Blackboard:
+        """
+        Repair IR given QA feedback.
+        
+        Default implementation is a no-op. Agents can override this
+        to implement repair logic (typically LLM-based repair).
+        
+        Repair Process (if implemented):
+        1. Build repair prompt from QaIssue list
+        2. Include current IR state in prompt
+        3. Call LLM with repair prompt
+        4. Extract and validate fixed IR
+        5. Update blackboard with fixed IR
+        
+        Args:
+            board: Current blackboard state
+            qa_items: List of QaIssue objects from validation
+            
+        Returns:
+            Updated blackboard (unchanged by default)
+        """
+        logger.warning(
+            f"Agent {self.name} does not implement _repair(), "
+            f"ignoring {len(qa_items)} QA issues"
+        )
+        return board
     
     def run(self, board: Blackboard) -> Blackboard:
-        """Execute agent's task. Must be implemented by subclasses."""
-        raise NotImplementedError
+        """
+        Execute the agent's task.
+        
+        This is the legacy entry point. New code should use _produce()
+        and _repair() for better integration with repair loops.
+        
+        Args:
+            board: Current blackboard state
+            
+        Returns:
+            Updated blackboard
+        """
+        logger.info(f"Running agent: {self.name}")
+        raise NotImplementedError(f"Agent {self.name} must implement run() or _produce()")
 ```
 
-#### 2.3 Agent Sequence
+**Agent Method Responsibilities**:
+
+1. **`_produce()`**: 
+   - **Purpose**: Generate initial IR from blackboard inputs
+   - **When Called**: First attempt to create IR, before validation
+   - **Must Implement**: All agents that generate IRs
+   - **Returns**: Blackboard with new IR written
+
+2. **`_repair()`**:
+   - **Purpose**: Fix IR based on validation feedback
+   - **When Called**: After validation finds issues, up to `max_retries` times
+   - **Optional**: Agents can override for custom repair logic
+   - **Default**: No-op (logs warning and returns unchanged board)
+   - **Returns**: Blackboard with fixed IR written
+
+3. **`run()`**:
+   - **Purpose**: Legacy entry point for backward compatibility
+   - **When Called**: By Orchestrator or direct agent invocation
+   - **Default Behavior**: Calls `_produce()` (for agents that don't override `run()`)
+   - **Returns**: Blackboard with IR written
+
+**Agent Execution Pattern**:
+All agents follow this pattern in their `run()` or `_produce()` methods:
+
+```python
+def run(self, board: Blackboard) -> Blackboard:
+    # Step 1: Check prerequisites
+    if board.requirement_ir is None:
+        logger.warning("Missing prerequisite IR, skipping")
+        return board
+    
+    # Step 2: Load prompts
+    sys_tmpl = load_prompt("roles/{agent}_system.txt")
+    usr_tmpl = load_prompt("roles/{agent}_user.txt")
+    
+    # Step 3: Render user prompt with IR data
+    user_content = render_prompt(
+        usr_tmpl,
+        REQUIREMENT_JSON=board.requirement_ir.model_dump_json(indent=2),
+        # ... other IRs as needed
+    )
+    
+    # Step 4: Build messages
+    messages = [
+        {"role": "system", "content": sys_tmpl},
+        {"role": "user", "content": user_content},
+    ]
+    
+    # Step 5: Call LLM with retry logic
+    for attempt in range(max_retries):
+        try:
+            raw = chat(messages)
+            data = extract_json(raw)
+            board.{ir_field} = {IRModel}.model_validate(data)
+            break  # Success!
+        except (JSONParseError, ValidationError) as e:
+            if attempt < max_retries - 1:
+                # Add error feedback to messages and retry
+                messages.append({"role": "user", "content": f"Error: {e}..."})
+            else:
+                raise
+    
+    return board
+```
+
+#### 2.3 Agent Sequence and Detailed Execution Flows
+
+The system uses **6 specialized agents** that execute in a fixed sequence. Each agent transforms one or more IRs into the next IR in the pipeline.
+
+**Agent Execution Order**:
+1. **ManagerAgent**: NL → RequirementIR
+2. **ConceptualDesigner**: RequirementIR → ConceptualIR
+3. **LogicalDesigner**: ConceptualIR + RequirementIR → LogicalIR
+4. **DistributionEngineer**: LogicalIR + RequirementIR → GenerationIR
+5. **WorkloadDesigner**: LogicalIR + RequirementIR → WorkloadIR
+6. **QACompilerAgent**: All IRs → DatasetIR
+
+**Complete Agent Execution Lifecycle**:
+
+Each agent follows this detailed lifecycle:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              Agent Execution Lifecycle                           │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Phase 1: Prerequisite Check                              │  │
+│  │   - Check if required IRs exist in blackboard            │  │
+│  │   - If missing: log warning and return unchanged board  │  │
+│  │   - If present: proceed to Phase 2                       │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                            │                                     │
+│                            ▼                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Phase 2: Prompt Loading                                   │  │
+│  │   - Load system prompt: roles/{agent}_system.txt         │  │
+│  │   - Load user prompt template: roles/{agent}_user.txt   │  │
+│  │   - Both prompts are plain text files                    │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                            │                                     │
+│                            ▼                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Phase 3: Prompt Rendering                                │  │
+│  │   - Serialize required IRs to JSON (indent=2)           │  │
+│  │   - Render user template with IR data as placeholders    │  │
+│  │   - Example: render_prompt(template,                     │  │
+│  │              REQUIREMENT_JSON=ir.model_dump_json())     │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                            │                                     │
+│                            ▼                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Phase 4: LLM Message Construction                        │  │
+│  │   - Build messages list:                                 │  │
+│  │     [                                                     │  │
+│  │       {"role": "system", "content": sys_tmpl},         │  │
+│  │       {"role": "user", "content": user_content}         │  │
+│  │     ]                                                     │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                            │                                     │
+│                            ▼                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Phase 5: LLM Call with Retry Logic                       │  │
+│  │   - Attempt 1: Call chat(messages)                      │  │
+│  │     ├─ Success: proceed to Phase 6                      │  │
+│  │     └─ Failure: add error message to messages, retry    │  │
+│  │   - Attempt 2: Call chat(messages) with error context   │  │
+│  │     ├─ Success: proceed to Phase 6                      │  │
+│  │     └─ Failure: raise exception                          │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                            │                                     │
+│                            ▼                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Phase 6: JSON Extraction                                  │  │
+│  │   - Strategy 1: Extract from markdown code blocks        │  │
+│  │     Pattern: ```json {...} ```                          │  │
+│  │   - Strategy 2: Extract plain JSON object                │  │
+│  │     Pattern: {...}                                       │  │
+│  │   - Strategy 3: Parse entire text as JSON                │  │
+│  │   - If all fail: raise JSONParseError                    │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                            │                                     │
+│                            ▼                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Phase 7: Data Preprocessing (Optional)                    │  │
+│  │   - Fix common LLM mistakes (e.g., INT66 → INT)         │  │
+│  │   - Convert None to empty dicts                          │  │
+│  │   - Wrap lists in dicts if needed                        │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                            │                                     │
+│                            ▼                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Phase 8: IR Validation                                    │  │
+│  │   - Validate JSON against Pydantic IR model             │  │
+│  │   - Check required fields, types, constraints            │  │
+│  │   - If invalid: add error to messages, retry (Phase 5)   │  │
+│  │   - If valid: proceed to Phase 9                        │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                            │                                     │
+│                            ▼                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Phase 9: Blackboard Update                                │  │
+│  │   - Write validated IR to blackboard                      │  │
+│  │   - Example: board.logical_ir = LogicalIR(...)           │  │
+│  │   - Log success message                                  │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                            │                                     │
+│                            ▼                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Phase 10: Return Updated Blackboard                       │  │
+│  │   - Return board with new IR written                      │  │
+│  │   - Next agent in sequence will read this IR             │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 **ManagerAgent** (`agents/roles/manager.py`)
-- **Input**: Natural language description
-- **Output**: RequirementIR
-- **Process**: 
-  1. Loads manager prompts (system + user)
-  2. Sends to LLM with NL input
-  3. Extracts JSON from response
-  4. Validates as RequirementIR
+
+**Purpose**: Extract structured requirements from natural language.
+
+**Input**: Natural language description (string)
+**Output**: RequirementIR
+**Dependencies**: None (first agent in sequence)
+
+**Detailed Execution**:
 
 ```python
 class ManagerAgent(BaseAgent):
+    """Extracts structured RequirementIR from natural language input."""
+    
+    name = "manager"
+    
     def __init__(self, nl_request: str):
+        """Initialize with natural language description."""
         self.nl_request = nl_request
     
     def run(self, board: Blackboard) -> Blackboard:
+        """
+        Extract RequirementIR from natural language.
+        
+        Detailed Steps:
+        1. Load prompts:
+           - System: roles/manager_system.txt (role definition, JSON schema)
+           - User: roles/manager_user.txt (template with {NARRATIVE} placeholder)
+        
+        2. Render user prompt:
+           - Replace {NARRATIVE} with self.nl_request
+        
+        3. Build LLM messages:
+           - System message: role definition and output format
+           - User message: rendered template with NL description
+        
+        4. Call LLM with retry (max 2 attempts):
+           - Attempt 1: Call chat(messages)
+           - If JSONParseError: add "return only JSON" message, retry
+           - If ValidationError: add error details, retry
+           - Attempt 2: Call chat(messages) with error context
+        
+        5. Extract JSON:
+           - Try markdown code blocks first
+           - Fall back to plain JSON extraction
+           - Fix common issues (None params → empty dict)
+        
+        6. Validate:
+           - RequirementIR.model_validate(data)
+           - Pydantic ensures all fields are correct types
+        
+        7. Write to blackboard:
+           - board.requirement_ir = validated_ir
+        
+        8. Return updated board
+        """
+        logger.info("Manager agent: Extracting RequirementIR from NL")
+        
+        # Load prompts
         sys_tmpl = load_prompt("roles/manager_system.txt")
         usr_tmpl = load_prompt("roles/manager_user.txt")
+        
+        # Render user prompt
         user_content = render_prompt(usr_tmpl, NARRATIVE=self.nl_request)
         
+        # Build messages
         messages = [
             {"role": "system", "content": sys_tmpl},
             {"role": "user", "content": user_content},
         ]
         
-        raw = chat(messages)
-        data = extract_json(raw)
-        board.requirement_ir = RequirementIR.model_validate(data)
+        # Retry logic (max 2 attempts)
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                # Call LLM
+                raw = chat(messages)
+                
+                # Extract JSON
+                data = extract_json(raw)
+                
+                # Fix common LLM mistakes
+                if isinstance(data, dict) and "distributions" in data:
+                    for dist in data["distributions"]:
+                        if isinstance(dist, dict) and dist.get("params") is None:
+                            dist["params"] = {}
+                
+                # Validate as RequirementIR
+                board.requirement_ir = RequirementIR.model_validate(data)
+                
+                # Success!
+                break
+                
+            except JSONParseError as e:
+                if attempt < max_retries - 1:
+                    messages.append({
+                        "role": "user",
+                        "content": "Please return ONLY valid JSON, no markdown formatting."
+                    })
+                else:
+                    raise
+                    
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    error_summary = str(e)[:200]
+                    messages.append({
+                        "role": "user",
+                        "content": f"Validation error: {error_summary}. Please fix JSON structure."
+                    })
+                else:
+                    raise
+        
         return board
 ```
 
+**Key Features**:
+- **No Prerequisites**: First agent, doesn't check for existing IRs
+- **NL Input**: Takes natural language string directly (not from blackboard)
+- **Simple Output**: Single IR (RequirementIR)
+- **Error Handling**: Retries with specific error messages
+
 **ConceptualDesigner** (`agents/roles/conceptual_designer.py`)
-- **Input**: RequirementIR
-- **Output**: ConceptualIR
-- **Process**: Converts requirements to ER model
+
+**Purpose**: Design conceptual ER model from requirements.
+
+**Input**: RequirementIR (from blackboard)
+**Output**: ConceptualIR
+**Dependencies**: Requires `board.requirement_ir` to exist
+
+**Key Differences from ManagerAgent**:
+- **Prerequisite Check**: Verifies `board.requirement_ir` exists before proceeding
+- **Multiple IRs in Prompt**: Includes RequirementIR JSON in user prompt
+- **Output Type**: ConceptualIR (entities, relationships, attributes)
 
 ```python
 class ConceptualDesigner(BaseAgent):
@@ -1031,7 +1447,362 @@ class QACompilerAgent(BaseAgent):
         return board
 ```
 
-#### 2.4 Agent Runner with Repair Loop (`agents/runner.py`)
+#### 2.4 Prompt System (`prompts/loader.py`)
+
+**Purpose**: File-based prompt management for easy iteration and version control.
+
+**Architecture**:
+Prompts are stored as plain text files in `prompts/roles/` directory. Each agent has two prompt files:
+- **`{agent}_system.txt`**: System prompt defining the agent's role and output format
+- **`{agent}_user.txt`**: User prompt template with placeholders for IR data
+
+**Prompt Loading**:
+
+```python
+def load_prompt(path: str) -> str:
+    """
+    Load a prompt file from the prompts directory.
+    
+    Process:
+    1. Resolve path relative to prompts/ directory
+    2. Read file contents as UTF-8 text
+    3. Return as string
+    
+    Args:
+        path: Relative path, e.g., 'roles/manager_system.txt'
+        
+    Returns:
+        Prompt file contents
+        
+    Raises:
+        FileNotFoundError: If prompt file doesn't exist
+    """
+    full_path = PROMPTS_DIR / path
+    return full_path.read_text(encoding="utf-8")
+```
+
+**Prompt Rendering**:
+
+```python
+def render_prompt(template: str, **kwargs: Any) -> str:
+    """
+    Render a prompt template with placeholders.
+    
+    Uses Python's str.format() for templating.
+    Placeholders in templates use {PLACEHOLDER_NAME} format.
+    
+    Example:
+        template = "RequirementIR:\n\n{REQUIREMENT_JSON}"
+        rendered = render_prompt(template, REQUIREMENT_JSON=ir_json)
+    
+    Args:
+        template: Template string with {PLACEHOLDER} placeholders
+        **kwargs: Values to fill placeholders
+        
+    Returns:
+        Rendered prompt string
+        
+    Raises:
+        KeyError: If placeholder is missing from kwargs
+    """
+    return template.format(**kwargs)
+```
+
+**Prompt File Structure**:
+
+**System Prompt** (`roles/{agent}_system.txt`):
+- Defines agent's role and responsibilities
+- Specifies output JSON schema
+- Provides guidelines and constraints
+- Example: "You are the Logical Designer agent. You must return a JSON object matching this structure: {...}"
+
+**User Prompt Template** (`roles/{agent}_user.txt`):
+- Contains placeholders for IR data: `{REQUIREMENT_JSON}`, `{CONCEPTUAL_JSON}`, etc.
+- Provides context about what to transform
+- Example: "ConceptualIR:\n\n{CONCEPTUAL_JSON}\n\nRequirementIR:\n\n{REQUIREMENT_JSON}\n\nDesign a logical relational schema..."
+
+**Benefits**:
+- **Easy Iteration**: Edit prompts without code changes
+- **Version Control**: Track prompt changes in git
+- **A/B Testing**: Try different prompt variations
+- **Non-Developer Friendly**: Domain experts can edit prompts
+- **Separation of Concerns**: Logic in code, instructions in prompts
+
+#### 2.5 LLM Call Flow (`agents/tools/llm_client.py`)
+
+**Purpose**: Unified interface for multiple LLM providers with automatic fallback.
+
+**Provider Priority**:
+1. **OpenAI** (if `OPENAI_API_KEY` and `MODEL_NAME` set)
+2. **Local API** (if `LLM_URL` and `MODEL` set) - OpenAI-compatible
+3. **Gemini** (if `GEMINI_API_KEY` and `GEMINI_MODEL` set)
+
+**Unified Interface**:
+
+```python
+def chat(messages: List[Dict[str, str]]) -> str:
+    """
+    Unified interface for multiple LLM providers.
+    
+    Process:
+    1. Check environment variables to determine provider
+    2. Route to appropriate provider function
+    3. Return response text
+    
+    Args:
+        messages: List of message dicts with "role" and "content"
+                 Format: [{"role": "system", "content": "..."}, ...]
+    
+    Returns:
+        LLM response text (may contain JSON, markdown, etc.)
+    
+    Raises:
+        RuntimeError: If no provider is configured
+        API errors: Provider-specific exceptions
+    """
+    if use_openai:
+        return _chat_openai(messages)
+    elif use_local:
+        return _chat_local(messages)
+    else:
+        return _chat_gemini(messages)
+```
+
+**Provider-Specific Details**:
+
+**OpenAI Provider**:
+- Uses official `openai` Python SDK
+- Standard chat completion API
+- Temperature control via settings
+- Error handling for rate limits
+
+**Local Provider** (OpenAI-compatible):
+- Supports local LLM servers (Ollama, vLLM, etc.)
+- Custom base URL configuration
+- **Retry Logic**: Handles "Model reloaded" and 503 errors
+- 10-minute timeout for slow local models
+- Exponential backoff on transient errors
+
+**Gemini Provider**:
+- Uses Google Generative AI SDK
+- Combines system + user prompts (Gemini format)
+- Handles response parts (text or parts array)
+- Error handling for quota limits
+
+**Retry Logic** (`agents/tools/retry.py`):
+
+```python
+def retry_with_backoff(
+    func: Callable,
+    max_retries: int = 3,
+    base_delay: float = 2.0,
+    timeout_errors: List[Type[Exception]] = None,
+    operation_name: str = "operation"
+) -> Any:
+    """
+    Retry function with exponential backoff.
+    
+    Handles transient errors (network issues, rate limits, model reloads).
+    
+    Process:
+    1. Call func()
+    2. If transient error and retries remaining:
+       - Wait: base_delay * (2 ** attempt)
+       - Retry
+    3. If max_retries exceeded: raise exception
+    
+    Args:
+        func: Function to retry
+        max_retries: Maximum retry attempts
+        base_delay: Initial delay in seconds
+        timeout_errors: List of exception types to retry on
+        operation_name: Name for logging
+        
+    Returns:
+        Function result
+        
+    Raises:
+        Last exception if all retries fail
+    """
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except Exception as e:
+            if is_transient_error(e) and attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                time.sleep(delay)
+                continue
+            raise
+```
+
+#### 2.6 JSON Extraction (`agents/tools/json_parser.py`)
+
+**Purpose**: Robust extraction of JSON from LLM responses that may contain markdown, explanations, or formatting.
+
+**Problem**: LLMs often wrap JSON in markdown code blocks or add explanatory text:
+```
+Here's the JSON:
+
+```json
+{
+  "tables": {...}
+}
+```
+
+This represents the schema...
+```
+
+**Solution**: Multiple extraction strategies with fallback:
+
+```python
+def extract_json(text: str) -> Dict[str, Any]:
+    """
+    Extract JSON from LLM output using multiple strategies.
+    
+    Strategies (in order):
+    1. Markdown code blocks: ```json {...} ``` or ``` {...} ```
+    2. Plain JSON object: {...} (first complete JSON object)
+    3. Entire text as JSON
+    
+    Args:
+        text: LLM response text (may contain markdown, explanations, etc.)
+        
+    Returns:
+        Parsed JSON as dict
+        
+    Raises:
+        JSONParseError: If no valid JSON found
+    """
+    # Strategy 1: Markdown code blocks
+    json_block_pattern = r"```(?:json)?\s*(\{.*?\})\s*```"
+    match = re.search(json_block_pattern, text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except json.JSONDecodeError:
+            pass
+    
+    # Strategy 2: Plain JSON object (first complete object)
+    json_obj_pattern = r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}"
+    match = re.search(json_obj_pattern, text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            pass
+    
+    # Strategy 3: Entire text
+    try:
+        return json.loads(text.strip())
+    except json.JSONDecodeError:
+        pass
+    
+    raise JSONParseError("Could not extract valid JSON from LLM response")
+```
+
+**Key Features**:
+- **Multiple Strategies**: Handles various LLM output formats
+- **Regex-Based**: Efficient extraction without full parsing
+- **Error Handling**: Clear error messages with context
+- **Logging**: Debug information for troubleshooting
+
+#### 2.7 Validation System (`ir/validators.py`)
+
+**Purpose**: Structured validation of IRs with detailed issue reporting.
+
+**QaIssue Model**:
+
+```python
+@dataclass
+class QaIssue:
+    """QA issue found during validation."""
+    
+    stage: Literal["LogicalIR", "GenerationIR", "PostGen"]
+    code: str  # e.g., "MISSING_PK", "FK_REF_INVALID"
+    location: str  # e.g., "table_name" or "table_name.column_name"
+    message: str  # Human-readable error message
+    details: dict = field(default_factory=dict)  # Additional context
+```
+
+**Validation Functions**:
+
+**1. `validate_logical(ir: DatasetIR) -> List[QaIssue]`**:
+- Checks primary keys exist and reference valid columns
+- Validates foreign keys reference existing tables/columns
+- Returns list of QaIssue objects (empty if validation passes)
+
+**2. `validate_generation(ir: DatasetIR) -> List[QaIssue]`**:
+- Ensures all generation specs reference existing tables/columns
+- Checks for orphaned specs
+- Validates distribution parameters
+
+**3. `validate_derived_columns(ir: DatasetIR) -> List[QaIssue]`**:
+- Validates derived column expressions
+- Checks dependencies exist
+- Detects circular dependencies
+
+**4. `collect_issues(validators: List[Callable], board: Blackboard) -> List[QaIssue]`**:
+- Runs multiple validators on blackboard
+- Collects all issues into single list
+- Used by repair loop
+
+**Issue Codes**:
+- `MISSING_PK`: Table missing primary key
+- `PK_COL_MISSING`: Primary key column doesn't exist
+- `FK_REF_TABLE_MISSING`: Foreign key references missing table
+- `FK_COL_MISSING`: Foreign key column doesn't exist
+- `FK_REF_COL_MISSING`: Foreign key references missing column
+- `GEN_TABLE_MISSING`: Generation spec references unknown table
+- `GEN_COL_MISSING`: Generation spec references unknown column
+- And many more...
+
+**Validation Process**:
+
+```python
+def validate_logical(ir: DatasetIR) -> List[QaIssue]:
+    """
+    Validate logical schema constraints.
+    
+    Process:
+    1. Iterate through all tables in LogicalIR
+    2. For each table:
+       - Check primary key exists
+       - Check primary key columns exist
+       - Check foreign keys reference valid tables/columns
+    3. Collect all issues into list
+    4. Return list (empty if validation passes)
+    
+    Returns:
+        List of QaIssue objects
+    """
+    issues: List[QaIssue] = []
+    
+    for table_name, table in ir.logical.tables.items():
+        # Check primary key
+        if not table.primary_key:
+            issues.append(QaIssue(
+                stage="LogicalIR",
+                code="MISSING_PK",
+                location=table_name,
+                message=f"{table_name}: missing primary key",
+                details={"table": table_name}
+            ))
+        
+        # Check foreign keys
+        for fk in table.foreign_keys:
+            if fk.ref_table not in ir.logical.tables:
+                issues.append(QaIssue(
+                    stage="LogicalIR",
+                    code="FK_REF_TABLE_MISSING",
+                    location=f"{table_name}.{fk.column}",
+                    message=f"FK '{fk.column}' references missing table '{fk.ref_table}'",
+                    details={"table": table_name, "fk_column": fk.column}
+                ))
+    
+    return issues
+```
+
+#### 2.8 Agent Runner with Repair Loop (`agents/runner.py`)
 
 **Purpose**: Executes agents with automatic repair loops based on validation feedback.
 
@@ -1273,44 +2044,413 @@ class BaseAgent:
         return self._produce(board)
 ```
 
-#### 2.5 Orchestrator (`agents/orchestrator.py`)
+#### 2.9 Orchestrator (`agents/orchestrator.py`)
 
-**Purpose**: Executes agents in sequence (with optional repair loops).
+**Purpose**: Coordinates sequential execution of all agents in the pipeline.
+
+**Architecture**:
+The Orchestrator is responsible for:
+1. **Agent Sequencing**: Executes agents in the correct order
+2. **State Management**: Passes blackboard between agents
+3. **Error Handling**: Catches and logs agent failures
+4. **Progress Tracking**: Logs execution progress
+
+**Complete Implementation**:
 
 ```python
 class Orchestrator:
-    def __init__(self, agents: List[BaseAgent]):
-        self.agents = agents
+    """Orchestrates the execution of multiple agents in sequence with repair loops and metrics tracking."""
     
-    def execute(self, board: Blackboard) -> Blackboard:
-        current_board = board
-        for agent in self.agents:
-            current_board = agent.run(current_board)
-        return current_board
-    
-    def execute_with_repair(
-        self, 
-        board: Blackboard,
-        validators_map: Dict[str, List[Callable]]
-    ) -> Blackboard:
+    def __init__(
+        self,
+        agents: List[BaseAgent],
+        query_id: Optional[str] = None,
+        query_text: Optional[str] = None,
+        enable_repair: bool = True,
+        enable_metrics: bool = True,
+    ):
         """
-        Execute agents with repair loops.
+        Initialize orchestrator with a list of agents.
         
         Args:
-            board: Initial blackboard
-            validators_map: Dict mapping agent name -> list of validators
+            agents: List of agents to execute in order
+            query_id: Optional query ID for metrics tracking
+            query_text: Optional query text for metrics tracking
+            enable_repair: Whether to use repair loop system (default: True)
+            enable_metrics: Whether to track quality metrics (default: True)
         """
+        self.agents = agents
+        self.query_id = query_id
+        self.query_text = query_text
+        self.enable_repair = enable_repair
+        self.enable_metrics = enable_metrics
+        logger.info(f"Initialized orchestrator with {len(agents)} agents")
+    
+    def execute(self, board: Blackboard) -> Blackboard:
+        """
+        Execute all agents in sequence with repair loops and metrics tracking.
+        
+        Process:
+        1. Start metrics tracking (if enabled)
+        2. Start with initial blackboard (empty or pre-populated)
+        3. For each agent in sequence:
+           a. Start agent metrics tracking
+           b. If repair enabled: Use run_with_repair() with appropriate validators
+           c. Else: Call agent.run() directly (legacy mode)
+           d. End agent metrics tracking (success/failure)
+           e. Log agent completion
+        4. Return final blackboard with all IRs populated
+        
+        Args:
+            board: Initial blackboard state
+            
+        Returns:
+            Final blackboard state after all agents execute
+            
+        Raises:
+            Exception: If any agent fails (stops pipeline)
+        """
+        logger.info("Starting orchestrator execution")
+        
+        # Start metrics tracking if enabled
+        collector = None
+        if self.enable_metrics:
+            collector = get_metrics_collector()
+            if self.query_id and self.query_text:
+                collector.start_query(self.query_id, self.query_text)
+            elif self.query_text:
+                # Generate query ID from text hash if not provided
+                import hashlib
+                query_id = hashlib.md5(self.query_text.encode()).hexdigest()[:8]
+                collector.start_query(query_id, self.query_text)
+        
         current_board = board
-        for agent in self.agents:
-            validators = validators_map.get(agent.name, [])
-            if validators:
-                current_board = run_with_repair(
-                    agent, current_board, validators, max_retries=2
-                )
-            else:
-                current_board = agent.run(current_board)
+
+        for i, agent in enumerate(self.agents, 1):
+            logger.info(f"Executing agent {i}/{len(self.agents)}: {agent.name}")
+            
+            # Start agent metrics tracking
+            if collector:
+                collector.start_agent(agent.name)
+            
+            try:
+                if self.enable_repair:
+                    # Use repair loop system
+                    validators = self._get_validators_for_agent(agent)
+                    current_board = run_with_repair(
+                        agent,
+                        current_board,
+                        validators,
+                        max_retries=2,
+                    )
+                else:
+                    # Direct execution (legacy mode)
+                    current_board = agent.run(current_board)
+                
+                # End agent metrics tracking (success)
+                if collector:
+                    collector.end_agent(agent.name, success=True)
+                
+                logger.info(f"Agent {agent.name} completed successfully")
+            except Exception as e:
+                # End agent metrics tracking (failure)
+                if collector:
+                    collector.end_agent(agent.name, success=False, error_message=str(e))
+                logger.error(f"Agent {agent.name} failed: {e}", exc_info=True)
+                raise
+
+        logger.info("Orchestrator execution completed")
         return current_board
+    
+    def _get_validators_for_agent(self, agent: BaseAgent) -> List:
+        """
+        Get appropriate validators for an agent based on its type.
+        
+        Returns:
+            List of validator functions (validate_logical_blackboard, validate_generation_blackboard, etc.)
+        """
+        validators = []
+        
+        # Logical Designer needs logical validation
+        if agent.name == "logical_designer":
+            validators.append(validate_logical_blackboard)
+        
+        # Distribution Engineer needs generation validation
+        if agent.name == "dist_engineer":
+            validators.append(validate_generation_blackboard)
+        
+        return validators
 ```
+
+**Execution Flow**:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Orchestrator Execution                        │
+│                                                                  │
+│  Initial Blackboard (empty)                                      │
+│         │                                                        │
+│         ▼                                                        │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Agent 1: ManagerAgent                                     │  │
+│  │   Input: NL description (from constructor)                │  │
+│  │   Output: board.requirement_ir                            │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│         │                                                        │
+│         ▼                                                        │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Agent 2: ConceptualDesigner                              │  │
+│  │   Input: board.requirement_ir                            │  │
+│  │   Output: board.conceptual_ir                             │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│         │                                                        │
+│         ▼                                                        │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Agent 3: LogicalDesigner                                 │  │
+│  │   Input: board.requirement_ir + board.conceptual_ir      │  │
+│  │   Output: board.logical_ir                               │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│         │                                                        │
+│         ▼                                                        │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Agent 4: DistributionEngineer                            │  │
+│  │   Input: board.requirement_ir + board.logical_ir         │  │
+│  │   Output: board.generation_ir                             │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│         │                                                        │
+│         ▼                                                        │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Agent 5: WorkloadDesigner                                 │  │
+│  │   Input: board.requirement_ir + board.logical_ir         │  │
+│  │   Output: board.workload_ir                               │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│         │                                                        │
+│         ▼                                                        │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Agent 6: QACompilerAgent                                 │  │
+│  │   Input: All IRs from blackboard                         │  │
+│  │   Output: board.dataset_ir (combined IR)                 │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│         │                                                        │
+│         ▼                                                        │
+│  Final Blackboard (all IRs populated)                            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Error Handling**:
+- If any agent fails, the orchestrator:
+  1. Logs the error with full traceback
+  2. Raises the exception (stops pipeline)
+  3. Blackboard state is preserved up to the point of failure
+
+**Usage**:
+
+```python
+from nl2data.agents.orchestrator import Orchestrator
+from nl2data.agents.base import Blackboard
+from nl2data.utils.agent_factory import create_agent_list
+import hashlib
+
+# Create agent sequence
+nl_description = "Generate a retail sales dataset..."
+agents = create_agent_list(nl_description)
+
+# Generate query ID for metrics tracking
+query_id = hashlib.md5(nl_description.encode()).hexdigest()[:8]
+
+# Create orchestrator with repair loops and metrics tracking enabled
+orchestrator = Orchestrator(
+    agents,
+    query_id=query_id,
+    query_text=nl_description,
+    enable_repair=True,  # Use repair loops (default)
+    enable_metrics=True  # Track quality metrics (default)
+)
+
+# Execute pipeline
+initial_board = Blackboard()
+final_board = orchestrator.execute(initial_board)
+
+# Access final IR
+dataset_ir = final_board.dataset_ir
+```
+
+**Key Features**:
+- **Repair Loops**: Automatically retries agents with validation feedback (up to 2 retries)
+- **Metrics Tracking**: Tracks agent execution times, success/failure, validation issues
+- **Validator Selection**: Automatically selects appropriate validators for each agent type
+- **Backward Compatible**: Can disable repair/metrics for legacy behavior
+
+#### 2.10 Agent Factory (`utils/agent_factory.py`)
+
+**Purpose**: Factory functions for creating standardized agent sequences.
+
+**Functions**:
+
+```python
+def create_agent_sequence(nl_description: str) -> List[Tuple[str, BaseAgent]]:
+    """
+    Create the standard agent sequence for NL → IR pipeline.
+    
+    Returns list of (agent_name, agent_instance) tuples.
+    Useful for UI/CLI that need agent names for display.
+    
+    Args:
+        nl_description: Natural language description of the dataset
+        
+    Returns:
+        List of tuples: [("manager", ManagerAgent(...)), ...]
+    """
+    return [
+        ("manager", ManagerAgent(nl_description)),
+        ("conceptual_designer", ConceptualDesigner()),
+        ("logical_designer", LogicalDesigner()),
+        ("dist_engineer", DistributionEngineer()),
+        ("workload_designer", WorkloadDesigner()),
+        ("qa_compiler", QACompilerAgent()),
+    ]
+
+
+def create_agent_list(nl_description: str) -> List[BaseAgent]:
+    """
+    Create the standard agent list (without names) for use with Orchestrator.
+    
+    Args:
+        nl_description: Natural language description of the dataset
+        
+    Returns:
+        List of agent instances: [ManagerAgent(...), ConceptualDesigner(...), ...]
+    """
+    return [
+        ManagerAgent(nl_description),
+        ConceptualDesigner(),
+        LogicalDesigner(),
+        DistributionEngineer(),
+        WorkloadDesigner(),
+        QACompilerAgent(),
+    ]
+```
+
+**Benefits**:
+- **Standardization**: Ensures consistent agent order
+- **Convenience**: Single function call to create entire pipeline
+- **Maintainability**: Change agent order in one place
+- **Flexibility**: Can create custom sequences by modifying factory
+
+#### 2.11 Multi-Agent Framework Summary
+
+**Complete Data Flow**:
+
+```
+Natural Language Input
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Multi-Agent Pipeline                          │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 1. ManagerAgent                                          │  │
+│  │    - Load prompts                                        │  │
+│  │    - Call LLM with NL                                    │  │
+│  │    - Extract & validate JSON                             │  │
+│  │    - Write RequirementIR to blackboard                   │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                            │                                     │
+│                            ▼                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 2. ConceptualDesigner                                    │  │
+│  │    - Read RequirementIR from blackboard                 │  │
+│  │    - Load prompts                                        │  │
+│  │    - Render prompt with RequirementIR JSON              │  │
+│  │    - Call LLM                                            │  │
+│  │    - Extract & validate JSON                             │  │
+│  │    - Write ConceptualIR to blackboard                    │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                            │                                     │
+│                            ▼                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 3. LogicalDesigner                                       │  │
+│  │    - Read RequirementIR + ConceptualIR                  │  │
+│  │    - Load prompts                                        │  │
+│  │    - Render prompt with both IRs                        │  │
+│  │    - Call LLM                                            │  │
+│  │    - Extract & validate JSON                             │  │
+│  │    - Preprocess (fix common mistakes)                    │  │
+│  │    - Write LogicalIR to blackboard                       │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                            │                                     │
+│                            ▼                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 4. DistributionEngineer                                  │  │
+│  │    - Read RequirementIR + LogicalIR                     │  │
+│  │    - Load prompts                                        │  │
+│  │    - Render prompt with IRs                             │  │
+│  │    - Call LLM                                            │  │
+│  │    - Extract & validate JSON                             │  │
+│  │    - Write GenerationIR to blackboard                     │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                            │                                     │
+│                            ▼                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 5. WorkloadDesigner                                      │  │
+│  │    - Read RequirementIR + LogicalIR                     │  │
+│  │    - Load prompts                                        │  │
+│  │    - Render prompt with IRs                             │  │
+│  │    - Call LLM                                            │  │
+│  │    - Extract & validate JSON                             │  │
+│  │    - Postprocess (wrap lists if needed)                   │  │
+│  │    - Write WorkloadIR to blackboard                      │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                            │                                     │
+│                            ▼                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 6. QACompilerAgent                                       │  │
+│  │    - Read all IRs from blackboard                       │  │
+│  │    - Combine into DatasetIR                              │  │
+│  │    - Run validators (validate_logical, etc.)             │  │
+│  │    - Attempt automatic repair if issues found            │  │
+│  │    - Write DatasetIR to blackboard                       │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                            │                                     │
+│                            ▼                                     │
+│                    Final Blackboard                              │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ - requirement_ir: RequirementIR                           │  │
+│  │ - conceptual_ir: ConceptualIR                             │  │
+│  │ - logical_ir: LogicalIR                                   │  │
+│  │ - generation_ir: GenerationIR                             │  │
+│  │ - workload_ir: WorkloadIR                                │  │
+│  │ - dataset_ir: DatasetIR (combined)                       │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+    DatasetIR (ready for data generation)
+```
+
+**Key Design Principles**:
+
+1. **Separation of Concerns**: Each agent has a single, well-defined responsibility
+2. **Progressive Refinement**: Each IR builds on previous IRs
+3. **Type Safety**: Pydantic validation ensures correctness at each stage
+4. **Error Resilience**: Retry logic and validation catch issues early
+5. **Extensibility**: Easy to add new agents or modify existing ones
+6. **Testability**: Can test agents in isolation with mock blackboards
+7. **Observability**: Comprehensive logging at each stage
+
+**Agent Communication Pattern**:
+
+- **Read-Only Access**: Agents read previous IRs but never modify them
+- **Write-Once**: Each agent writes exactly one IR to the blackboard
+- **Sequential Dependencies**: Clear data flow - no circular dependencies
+- **Optional IRs**: Some IRs (workload_ir) are optional and may be None
+
+**Error Handling Strategy**:
+
+- **Per-Agent Retries**: Each agent retries LLM calls on JSON/validation errors
+- **Validation Feedback**: QaIssue objects provide structured error information
+- **Repair Loops**: Optional repair loops can fix validation issues automatically
+- **Fail-Fast**: Pipeline stops on unrecoverable errors (after all retries)
 
 ---
 
@@ -1578,6 +2718,47 @@ def sample_column(
 
 #### 3.3 Fact Generator (`generation/engine/fact_generator.py`)
 
+**Purpose**: Generates fact table data in streaming chunks with multi-phase processing.
+
+**Key Features**:
+- **Streaming Generation**: Yields data in chunks for memory efficiency
+- **Multi-Phase Processing**: Base columns → Events → Dimension Joins → Constraints → Derived → Windows
+- **Constraint Enforcement**: Applies FDs, implications, and nullability constraints (✅ Integrated as Phase 1.7)
+- **Window Function Support**: Full table materialization for window operations
+
+**Generation Phases**:
+
+The fact generator uses a multi-phase approach for efficient streaming generation:
+
+**Phase 1: Generate Base Columns**
+- Sample all non-derived, non-window columns using distribution samplers
+- Handle foreign keys with referential integrity
+- Apply type enforcement
+
+**Phase 1.5: Apply Event Effects**
+- Apply global event effects (e.g., incidents, storms) to base columns
+- Modify distributions based on active events
+
+**Phase 1.6: Join Dimension Tables**
+- Left join dimension tables for derived column lookups
+- Allows derived expressions to reference dimension attributes
+
+**Phase 1.7: Enforce Constraints** ✅ **NEW**
+- Apply functional dependencies (FDs)
+- Apply implication constraints
+- Enforce nullability (fill nulls in non-nullable columns)
+
+**Phase 2: Compute Derived Columns**
+- Evaluate derived expressions in dependency order
+- Uses vectorized DataFrame operations
+
+**Phase 3: Compute Window Columns** (if needed)
+- Full table materialization for window functions
+- Compute rolling aggregations, lag/lead, etc.
+- Split back into chunks for streaming
+
+**Note**: DerivedSampler has been removed. Derived columns are now handled exclusively by the derived expression engine (derived_program.py, derived_eval.py).
+
 **Streaming Generation**:
 
 ```python
@@ -1678,11 +2859,12 @@ The system supports derived columns that are computed from other columns using a
 - `and`, `or`, `not`
 
 **Comparison Operators**:
-- `<`, `<=`, `>`, `>=`, `==`, `!=`
+- `<`, `<=`, `>`, `>=`, `==`, `!=`, `in`, `not in` (membership testing)
 
 **Conditional Logic**:
 - `where(condition, value_if_true, value_if_false)`: Vectorized conditional
 - `value_if_true if condition else value_if_false`: Ternary expression
+- `case_when(cond1, val1, cond2, val2, ..., default)`: Multi-condition macro (evaluates to nested `where()` calls)
 
 **Math Functions**:
 - `abs(x)`: Absolute value
@@ -1696,6 +2878,28 @@ The system supports derived columns that are computed from other columns using a
 - `minutes(n)`: Convert to timedelta in minutes
 - `hours(n)`: Convert to timedelta in hours
 - `days(n)`: Convert to timedelta in days
+
+**Type Casting Functions**:
+- `int(x)`: Convert to integer
+- `float(x)`: Convert to float
+- `bool(x)`: Convert to boolean
+- `str(x)`: Convert to string
+
+**Distribution Functions** (for random number generation):
+- `normal(mean, std)`: Generate normal distribution samples
+- `lognormal(mean, sigma)`: Generate log-normal distribution samples
+- `pareto(alpha)`: Generate Pareto distribution samples
+
+**String Operations**:
+- `concat(str1, str2, ...)`: Concatenate multiple strings
+- `format(template, *args)`: Format string template with values (supports `{0}`, `{1}` style)
+- `substring(s, start, length=None)`: Extract substring from string(s)
+
+**Helper Functions**:
+- `between(x, a, b)`: Check if x is between a and b (inclusive), equivalent to `x >= a and x <= b`
+- `geo_distance(lat1, lon1, lat2, lon2)`: Calculate great-circle distance in kilometers using Haversine formula
+- `ts_diff(unit, t1, t2)`: Calculate time difference between t1 and t2 in specified unit ('seconds', 'minutes', 'hours', 'days')
+- `overlap_days(start1, end1, start2, end2)`: Calculate number of overlapping days between two date intervals
 
 **Expression Examples**:
 
@@ -1750,6 +2954,63 @@ Example:
 - Derived expression: `"dynamic_price_per_kwh / baseline_price_per_kwh"`
 - The generator automatically joins `dim_tariff_plan` before evaluating the expression
 
+**Window Functions**:
+
+The system supports window operations as first-class IR nodes (`DistWindow`), enabling rolling aggregations and time-series analysis:
+
+- **Window Types**:
+  - `RANGE`: Time-based windows (e.g., "7d", "24h")
+  - `ROWS`: Row-based windows (e.g., "100", "50")
+
+- **Supported Operations**:
+  - `mean(column)`, `sum(column)`, `count(*)`, `std(column)`: Aggregation functions
+  - `lag(column, n=1)`: Access previous row values
+  - `lead(column, n=1)`: Access next row values
+
+- **Partitioning**: Window functions can be partitioned by one or more columns
+- **Ordering**: Must specify an `order_by` column (typically a timestamp)
+
+Example:
+```json
+{
+  "kind": "window",
+  "expression": "mean(latency_p95)",
+  "partition_by": ["tenant_id"],
+  "order_by": "timestamp",
+  "frame": {
+    "type": "RANGE",
+    "preceding": "7d"
+  }
+}
+```
+
+**Event/Incident System**:
+
+Global events can affect data generation across multiple tables and columns:
+
+- **Event Specification**: Events have a name, time range (start/end), and effects
+- **Effect Types**:
+  - `multiply_distribution`: Multiply column values by a factor
+  - `add_offset`: Add a constant offset to column values
+  - `set_value`: Set column values to a specific value (with optional probability)
+
+Example:
+```json
+{
+  "events": [{
+    "name": "winter_storm",
+    "start_time": "2024-01-10T00:00:00Z",
+    "end_time": "2024-01-13T00:00:00Z",
+    "effects": [{
+      "table": "fact_shipment",
+      "column": "lead_time_days",
+      "effect_type": "multiply_distribution",
+      "value": 1.7
+    }]
+  }]
+}
+```
+
 **Validation**:
 
 The system validates derived columns at multiple stages:
@@ -1757,6 +3018,7 @@ The system validates derived columns at multiple stages:
 1. **Compile-time**: Expression syntax and allowed functions are checked
 2. **IR Validation**: Dependencies are verified to exist in the schema
 3. **Runtime**: Missing columns or evaluation errors provide helpful error messages
+4. **Nuance Coverage**: Automated lint checks that NL requirements are reflected in IR constructs
 
 **Implementation Details**:
 
@@ -1764,9 +3026,11 @@ The system validates derived columns at multiple stages:
 
 ```python
 class DerivedRegistry:
-    """Registry of compiled derived expressions."""
+    """Registry of compiled derived expressions and window columns."""
     programs: Dict[DerivedKey, DerivedProgram]  # (table, col) → compiled program
+    windows: Dict[DerivedKey, DistWindow]       # (table, col) → window specification
     order: Dict[str, List[str]]                 # table → [cols in topological order]
+    window_order: Dict[str, List[str]]          # table → [window cols in order]
 
 def build_derived_registry(ir: DatasetIR) -> DerivedRegistry:
     """
@@ -2161,59 +3425,189 @@ def fk_assignments(
 - **Memory Efficient**: Streams assignments without materializing full array
 - **Batch Processing**: Handles very large dimension tables efficiently
 
-#### 3.7 Value Providers (`generation/providers/`)
+#### 3.7 Window Function Evaluation (`generation/window_eval.py`)
 
-**Purpose**: Realistic data providers for generating human-readable values (names, addresses, etc.).
+**Window Operations**:
 
-**Provider Types**:
+The system supports window functions as first-class IR constructs for rolling aggregations and time-series analysis:
 
-1. **Faker Provider** (`faker_provider.py`):
-   Uses Faker library for realistic data.
+- **Window Frame Types**:
+  - `RANGE`: Time-based windows (e.g., "7d", "24h", "30m")
+  - `ROWS`: Row-based windows (e.g., "100", "50")
+
+- **Supported Aggregations**:
+  - `mean(column)`: Rolling mean
+  - `sum(column)`: Rolling sum
+  - `count(*)`: Rolling count
+  - `std(column)`: Rolling standard deviation
+  - `lag(column, n=1)`: Access previous row values
+  - `lead(column, n=1)`: Access next row values
+
+- **Partitioning**: Window functions can be partitioned by one or more columns
+- **Ordering**: Must specify an `order_by` column (typically a timestamp)
+
+**Implementation**:
 
 ```python
-from nl2data.generation.providers import get_provider
-
-provider = get_provider("faker.email")
-values = provider.generate(n=1000)
+def eval_window_expression(
+    df: pd.DataFrame,
+    window_spec: DistWindow,
+    expr_col: Optional[str] = None
+) -> pd.Series:
+    """
+    Evaluate window function on DataFrame.
+    
+    Process:
+    1. Parse window size (time-based or row-based)
+    2. Sort DataFrame by order_by column
+    3. Apply partitioning if specified
+    4. Compute rolling aggregation or lag/lead
+    5. Restore original row order
+    """
+    # For RANGE windows: use pandas rolling with time window
+    # For ROWS windows: use pandas rolling with integer window
+    # For lag/lead: use pandas shift()
 ```
 
-2. **Mimesis Provider** (`mimesis_provider.py`):
-   Uses Mimesis library for realistic data.
+**Memory Management**:
 
-3. **Geo Lookup Provider** (`lookup_geo.py`):
-   Uses GeoNames/Natural Earth datasets for geographic data.
+Tables with window columns require full materialization (all rows must be generated before computing windows). The generator automatically detects window columns and switches from streaming to batch mode for those tables.
 
-**Provider Registry** (`registry.py`):
+#### 3.8 Event System (`generation/event_eval.py`)
+
+**Event Effects**:
+
+Global events can causally affect data generation across multiple tables:
+
+- **Event Specification**: Events have a name, time range, and list of effects
+- **Time Parsing**: Supports ISO datetime strings, relative percentages ("50%"), and row numbers
+- **Effect Types**:
+  - `multiply_distribution`: Multiply column values by a factor (e.g., 1.7 for 70% increase)
+  - `add_offset`: Add constant offset to column values
+  - `set_value`: Set column values to specific value (with optional probability)
+
+**Application**:
+
+Events are applied after base column generation but before derived columns, allowing derived expressions to use modified values. Effects are applied per-chunk during streaming generation.
+
+Example use cases:
+- Weather events affecting shipment delays
+- System incidents affecting latency metrics
+- Marketing campaigns affecting transaction volumes
+
+#### 3.9 Value Providers (`generation/providers/`)
+
+**Provider System Architecture**:
+
+The provider system generates realistic data values using external libraries (Faker, Mimesis) or lookup datasets (geographic data):
+
+- **Provider Protocol**: All providers implement `ValueProvider` protocol
+- **Registry System**: Centralized registry maps provider names to factory functions
+- **Automatic Assignment**: Heuristic-based assignment of providers to columns based on name patterns
+
+**Supported Providers**:
+
+1. **Faker Providers** (`faker_provider.py`):
+   - `faker.name`, `faker.email`, `faker.phone_number`
+   - `faker.address`, `faker.city`, `faker.country`
+   - `faker.company`, `faker.job`
+   - `faker.date`, `faker.date_time`
+
+2. **Mimesis Providers** (`mimesis_provider.py`):
+   - `mimesis.full_name`, `mimesis.email`, `mimesis.telephone`
+   - `mimesis.address`
+
+3. **Geo Lookup Providers** (`lookup_geo.py`):
+   - `lookup.city`: Real city names from GeoNames dataset
+   - `lookup.country`: Real country names from GeoNames dataset
+   - Uses Parquet files for efficient lookups
+
+**Provider Assignment** (`providers/assign.py`):
+
+The system automatically assigns providers to columns based on name patterns:
 
 ```python
-from nl2data.generation.providers import get_provider, list_providers
-
-# List available providers
-providers = list_providers()
-# ['faker.email', 'faker.name', 'mimesis.full_name', 'lookup.city', ...]
-
-# Get a provider
-provider = get_provider("faker.email", config={"locale": "en_US"})
-values = provider.generate(n=1000)
+def assign_default_providers(board: Blackboard) -> Blackboard:
+    """
+    Heuristically assign providers to columns based on name patterns.
+    
+    Patterns:
+    - "email" → faker.email
+    - "phone" → faker.phone_number
+    - "name" (person names) → faker.name
+    - "city" → lookup.city
+    - etc.
+    """
 ```
 
-**Available Providers**:
-- `faker.name`, `faker.email`, `faker.phone_number`, `faker.address`, `faker.city`, `faker.country`, `faker.company`, `faker.job`, `faker.date`, `faker.date_time`
-- `mimesis.full_name`, `mimesis.email`, `mimesis.telephone`, `mimesis.address`
-- `lookup.city`, `lookup.country`
+**Provider Registry** (`providers/registry.py`):
 
-**Custom Providers**:
 ```python
-from nl2data.generation.providers import register_provider
-from nl2data.generation.providers.base import ValueProvider
+PROVIDERS = {
+    "faker.email": lambda cfg: FakerProvider(field="email", **cfg),
+    "faker.name": lambda cfg: FakerProvider(field="name", **cfg),
+    "lookup.city": lambda cfg: GeoLookupProvider(dataset="geonames.cities", **cfg),
+    # ... more providers
+}
 
-class MyProvider(ValueProvider):
-    def generate(self, n: int) -> np.ndarray:
-        # Custom generation logic
-        pass
-
-register_provider("my.provider", lambda cfg: MyProvider(**cfg))
+def get_provider(name: str, config: Dict[str, Any]) -> ValueProvider:
+    """Get provider instance by name."""
 ```
+
+#### 3.10 Memory-Safe FK Allocation (`generation/allocator.py`)
+
+**Guaranteed Coverage**:
+
+The FK allocation system ensures referential integrity while maintaining Zipf skew:
+
+- **Coverage Guarantee**: Every primary key gets at least one foreign key reference
+- **Zipf Skew**: Remaining rows follow Zipf distribution
+- **Memory Efficiency**: Streaming allocation without materializing large arrays
+
+**Implementation**:
+
+```python
+def fk_assignments(
+    pk_ids: np.ndarray,
+    n_rows: int,
+    probs: np.ndarray,
+    rng: np.random.Generator,
+    batch: int = 5_000_000,
+) -> Iterator[Tuple[np.ndarray, int]]:
+    """
+    Generate FK assignments with guaranteed coverage.
+    
+    Process:
+    1. Allocate one FK per PK (guaranteed coverage)
+    2. Allocate remaining rows by Zipf probabilities
+    3. Stream results in batches to avoid memory issues
+    """
+```
+
+**Alpha Clipping**:
+
+```python
+def clip_alpha_for_max_share(K: int, max_top1_share: float) -> float:
+    """
+    Find maximum alpha such that top item probability <= max_top1_share.
+    Uses binary search for efficient computation.
+    """
+```
+
+#### 3.11 Additional Generation Utilities
+
+**Type Enforcement** (`generation/type_enforcement.py`):
+- Enforces SQL types after sampling
+- Handles type coercion and validation
+
+**Uniqueness Enforcement** (`generation/uniqueness.py`):
+- Pattern-based detection of category columns
+- Uniqueness enforcement for categorical columns
+
+**IR Helpers** (`generation/ir_helpers.py`):
+- Builds distribution maps from IR
+- Builds provider maps from IR
+- Utility functions for IR extraction
 
 #### 3.8 Fact Generation Utilities (`generation/facts.py`)
 
@@ -2256,7 +3650,7 @@ def spawn_children(
 3. **`uniform_child_counts(n_parents, min_count=1, max_count=10, rng=None) -> np.ndarray`**:
    Generates child counts using uniform distribution.
 
-#### 3.9 Distribution Samplers
+#### 3.12 Distribution Samplers
 
 **Distribution Sampler System Architecture**:
 
@@ -2593,6 +3987,15 @@ class SeasonalDateSampler(BaseSampler):
 ---
 
 ### 4. Evaluation Framework
+
+The evaluation framework validates generated data against IR specifications across multiple dimensions:
+
+- **Schema Validation**: Primary key and foreign key integrity
+- **Statistical Alignment**: Distribution fitting (Zipf, categorical, numeric)
+- **Workload Performance**: Query execution time and correctness
+- **Relational Metrics**: Join selectivity, FK coverage, degree histograms
+- **Schema Coverage**: Comparison with gold/reference schemas
+- **Table-Level Fidelity**: Marginal distributions and correlations
 
 #### 4.1 Evaluation Configuration (`evaluation/config.py`)
 
@@ -3472,6 +4875,44 @@ def gini_coefficient(values: np.ndarray) -> float:
     ) / n
 ```
 
+**Supported Tests**:
+
+- **Kolmogorov-Smirnov Test**: Compare numeric distributions
+- **Chi-Square Test**: Compare categorical distributions
+- **Wasserstein Distance**: Earth Mover's Distance for numeric data
+- **Cosine Similarity**: Vector similarity for distributions
+- **Zipf Fitting**: R² and exponent estimation for Zipf distributions
+
+#### 4.10 Nuance Coverage Lint (`ir/validators.py`)
+
+**Automated Coverage Checking**:
+
+The system includes a nuance coverage lint that checks if NL requirements are reflected in the IR:
+
+```python
+def check_nuance_coverage(nl_text: Optional[str], ir: DatasetIR) -> List[QaIssue]:
+    """
+    Check if NL requirements are reflected in IR constructs.
+    
+    Detects missing constructs when NL mentions:
+    - "rolling", "window" → checks for DistWindow
+    - "incident", "event" → checks for EventSpec
+    - "log-normal" → checks for lognormal() function
+    - "Zipf" → checks for DistZipf
+    - "proration" → checks for overlap_days() function
+    - "pay-day" → checks for seasonal patterns
+    """
+```
+
+**Integration**:
+
+The nuance coverage check is integrated into `validate_dataset()` and can be enabled by passing the NL text:
+
+```python
+issues = validate_dataset(ir, nl_text="Generate rolling averages...")
+# Will detect if NL mentions "rolling" but IR lacks window functions
+```
+
 **Top-K Share** (for measuring concentration in group_by queries):
 
 ```python
@@ -4285,6 +5726,133 @@ def write_csv(df: pd.DataFrame, path: Path) -> None:
 - **Code Reuse**: Eliminates duplication between dimension and fact generators
 - **Consistency**: Ensures uniform fallback behavior across generators
 
+### Utility Functions
+
+#### IR I/O (`utils/ir_io.py`)
+
+**Purpose**: Load and save DatasetIR to/from JSON files.
+
+**Functions**:
+
+```python
+def load_ir_from_json(ir_path: Path) -> DatasetIR:
+    """
+    Load DatasetIR from a JSON file.
+    
+    Features:
+    - Validates file exists
+    - Checks for empty/corrupted files
+    - Provides helpful error messages
+    - Uses Pydantic TypeAdapter for validation
+    
+    Raises:
+    - FileNotFoundError: If file doesn't exist
+    - ValueError: If file is empty or corrupted
+    - ValidationError: If JSON doesn't match DatasetIR schema
+    """
+```
+
+```python
+def save_ir_to_json(ir: DatasetIR, ir_path: Path) -> None:
+    """
+    Save DatasetIR to a JSON file.
+    
+    Features:
+    - Creates parent directories if needed
+    - Pretty-prints JSON with 2-space indentation
+    - Uses UTF-8 encoding
+    """
+```
+
+**Usage**:
+```python
+from nl2data.utils.ir_io import load_ir_from_json, save_ir_to_json
+from pathlib import Path
+
+# Save IR
+save_ir_to_json(dataset_ir, Path("output/dataset_ir.json"))
+
+# Load IR
+ir = load_ir_from_json(Path("output/dataset_ir.json"))
+```
+
+#### Data Loader (`utils/data_loader.py`)
+
+**Purpose**: Load CSV files into pandas DataFrames.
+
+**Functions**:
+
+```python
+def load_csv_files(data_dir: Path) -> Dict[str, pd.DataFrame]:
+    """
+    Load all CSV files from a directory into DataFrames.
+    
+    Args:
+        data_dir: Directory containing CSV files
+        
+    Returns:
+        Dictionary mapping table names (file stems) to DataFrames
+        
+    Example:
+        If data_dir contains "fact_sales.csv" and "dim_product.csv",
+        returns {"fact_sales": DataFrame, "dim_product": DataFrame}
+    """
+```
+
+**Usage**:
+```python
+from nl2data.utils.data_loader import load_csv_files
+from pathlib import Path
+
+dfs = load_csv_files(Path("output/"))
+# dfs = {"fact_sales": DataFrame, "dim_product": DataFrame, ...}
+```
+
+#### Agent Factory (`utils/agent_factory.py`)
+
+**Purpose**: Create agent sequences from natural language input.
+
+**Functions**:
+
+```python
+def create_agent_list(nl_request: str) -> List[BaseAgent]:
+    """
+    Create a list of agents for the pipeline.
+    
+    Args:
+        nl_request: Natural language description
+        
+    Returns:
+        List of agents in execution order:
+        [ManagerAgent, ConceptualDesigner, LogicalDesigner,
+         DistributionEngineer, WorkloadDesigner, QACompilerAgent]
+    """
+```
+
+```python
+def create_agent_sequence(nl_request: str) -> List[Tuple[str, BaseAgent]]:
+    """
+    Create agent sequence with names for logging.
+    
+    Returns:
+        List of (agent_name, agent) tuples
+    """
+```
+
+**Usage**:
+```python
+from nl2data.utils.agent_factory import create_agent_list
+
+nl_description = "Generate a retail sales dataset..."
+agents = create_agent_list(nl_description)
+
+# Execute with orchestrator
+from nl2data.agents.orchestrator import Orchestrator
+from nl2data.agents.base import Blackboard
+
+board = Orchestrator(agents).execute(Blackboard())
+```
+
 ### IR Helpers (`generation/ir_helpers.py`)
 
 **Purpose**: Utilities for extracting information from DatasetIR.
@@ -4362,7 +5930,6 @@ def write_csv(df: pd.DataFrame, path: Path) -> None:
 
 **Key Functions**:
 - `handle_agent_error(agent_name, operation, error, raise_on_json_error) -> None`: Standardized error handling
-- `safe_extract_json(text, agent_name) -> dict`: Safely extract JSON with error handling
 
 **Benefits**:
 - **Code Reuse**: Eliminates duplicate error handling in agents
@@ -4481,22 +6048,192 @@ For more examples and detailed documentation, see `Improvement.md`.
 
 ### CLI Usage
 
-**End-to-End Pipeline**:
+The NL2Data CLI provides four main commands for running the pipeline end-to-end or in stages.
+
+**Installation**:
 ```bash
-python scripts/nl2data.py end2end description.txt output/
+# Install the package in development mode
+cd nl2data
+pip install -e .
 ```
 
-**Step-by-Step**:
+**Command Structure**:
 ```bash
-# NL → IR
-python scripts/nl2data.py nl2ir description.txt dataset_ir.json
+python -m nl2data.cli.app <command> [arguments]
+# Or using the script:
+python nl2data/scripts/nl2data.py <command> [arguments]
+```
 
-# IR → Data
+#### 1. End-to-End Pipeline (`end2end`)
+
+Runs the complete pipeline from natural language to generated data.
+
+**Usage**:
+```bash
+python scripts/nl2data.py end2end <description_file> <out_dir>
+```
+
+**Arguments**:
+- `description_file`: Path to a text file containing the natural language description
+- `out_dir`: Output directory where IR and CSV files will be written
+
+**Example**:
+```bash
+python scripts/nl2data.py end2end example_description.txt output/
+```
+
+**Output**:
+- `out_dir/dataset_ir.json`: Complete DatasetIR JSON file
+- `out_dir/*.csv`: Generated CSV files (one per table)
+
+**Process**:
+1. Reads natural language description from file
+2. Executes multi-agent pipeline (Manager → Conceptual → Logical → Distribution → Workload → QA)
+3. Saves DatasetIR to JSON
+4. Generates CSV files from IR
+5. Reports completion status
+
+#### 2. Natural Language to IR (`nl2ir`)
+
+Converts natural language to DatasetIR JSON without generating data.
+
+**Usage**:
+```bash
+python scripts/nl2data.py nl2ir <description_file> <out_ir>
+```
+
+**Arguments**:
+- `description_file`: Path to natural language description file
+- `out_ir`: Output path for DatasetIR JSON file
+
+**Example**:
+```bash
+python scripts/nl2data.py nl2ir example_description.txt dataset_ir.json
+```
+
+**Use Cases**:
+- Inspect IR structure before generating data
+- Debug agent outputs
+- Modify IR manually before generation
+- Share IR files without regenerating
+
+#### 3. Generate Data from IR (`generate`)
+
+Generates CSV files from an existing DatasetIR JSON file.
+
+**Usage**:
+```bash
+python scripts/nl2data.py generate <ir_json> <out_dir>
+```
+
+**Arguments**:
+- `ir_json`: Path to DatasetIR JSON file
+- `out_dir`: Output directory for CSV files
+
+**Example**:
+```bash
 python scripts/nl2data.py generate dataset_ir.json output/
-
-# Evaluate
-python scripts/nl2data.py evaluate-data dataset_ir.json output/ report.json
 ```
+
+**Configuration**:
+- Uses `seed` from settings (default: 7) for reproducibility
+- Uses `chunk_rows` from settings (default: 1,000,000) for fact table streaming
+- Can be overridden via environment variables (see Configuration section)
+
+**Output**:
+- `out_dir/*.csv`: One CSV file per table in the IR
+
+#### 4. Evaluate Generated Data (`evaluate_data`)
+
+Evaluates generated CSV files against the DatasetIR specifications.
+
+**Usage**:
+```bash
+python scripts/nl2data.py evaluate_data <ir_json> <data_dir> <out_report>
+```
+
+**Arguments**:
+- `ir_json`: Path to DatasetIR JSON file
+- `data_dir`: Directory containing generated CSV files
+- `out_report`: Output path for evaluation report JSON
+
+**Example**:
+```bash
+python scripts/nl2data.py evaluate_data dataset_ir.json output/ evaluation_report.json
+```
+
+**Evaluation Checks**:
+- **Schema Validation**: PK/FK integrity, column types, nullability
+- **Statistical Validation**: Distribution fitting (Zipf, KS test, chi-square)
+- **Workload Testing**: Query execution time, result correctness
+
+**Output**:
+- `out_report`: JSON file containing:
+  - Table reports (row counts, PK/FK status)
+  - Column reports (distribution metrics, statistical tests)
+  - Workload reports (query performance, pass/fail status)
+  - Summary (total failures, overall pass/fail)
+
+**Example Report Structure**:
+```json
+{
+  "schema": [
+    {
+      "name": "fact_sales",
+      "row_count": 5000000,
+      "pk_ok": true,
+      "fk_ok": true
+    }
+  ],
+  "columns": [
+    {
+      "table": "fact_sales",
+      "column": "product_id",
+      "metrics": [
+        {
+          "name": "zipf_r2",
+          "value": 0.95,
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "workloads": [
+    {
+      "sql": "SELECT product_id, COUNT(*) FROM fact_sales GROUP BY product_id",
+      "type": "group_by",
+      "elapsed_sec": 2.3,
+      "passed": true
+    }
+  ],
+  "summary": {
+    "failures": 0,
+    "total_checks": 15
+  },
+  "passed": true
+}
+```
+
+#### CLI Error Handling
+
+All commands include error handling:
+- **File Not Found**: Clear error messages for missing input files
+- **Invalid JSON**: Validation errors with helpful context
+- **Generation Failures**: Continues with remaining tables, reports failures
+- **LLM Errors**: Retry logic with exponential backoff (see Configuration)
+
+#### Environment Variables
+
+CLI commands respect environment variables from `.env` file:
+- `GEMINI_API_KEY`: Google Gemini API key
+- `GEMINI_MODEL`: Model name (e.g., "gemini-1.5-pro")
+- `OPENAI_API_KEY`: OpenAI API key (legacy)
+- `MODEL_NAME`: OpenAI model name (legacy)
+- `LLM_URL`: Local LLM API endpoint
+- `MODEL`: Model name for local LLM
+- `SEED`: Random seed for generation (default: 7)
+- `CHUNK_ROWS`: Rows per chunk for fact tables (default: 1,000,000)
+- `LOG_LEVEL`: Logging level (default: "INFO")
 
 ### Programmatic Usage
 
@@ -5077,12 +6814,338 @@ messages = [
 
 ## Error Handling and Robustness
 
+The system includes comprehensive error handling at multiple levels to ensure robustness and provide helpful error messages.
+
+### Error Handling Architecture
+
+**Layers of Error Handling**:
+1. **LLM Call Level**: Retry logic with exponential backoff
+2. **Agent Level**: Validation and repair loops
+3. **Generation Level**: Graceful failure with partial results
+4. **Evaluation Level**: Continue evaluation despite individual failures
+
 ### LLM Response Handling
 
-1. **JSON Extraction**: Multiple strategies to extract JSON from LLM output
-2. **Validation**: Pydantic validation catches malformed IRs
-3. **Error Messages**: Clear error messages with context
-4. **Logging**: Debug information for troubleshooting
+**Retry Logic** (`agents/tools/retry.py`):
+
+The system implements sophisticated retry logic for LLM API calls:
+
+```python
+def retry_with_backoff(
+    func: Callable[[], T],
+    max_retries: int = 3,
+    base_delay: float = 5.0,
+    timeout_errors: bool = True,
+    operation_name: str = "operation"
+) -> T:
+    """
+    Retry a function with exponential backoff.
+    
+    Features:
+    - Exponential backoff: delay = base_delay * (2 ** attempt)
+    - Transient error detection: retries on network errors, timeouts, rate limits
+    - Non-transient errors: raises immediately (validation errors, etc.)
+    - Configurable timeout handling
+    """
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except Exception as e:
+            if not is_transient_error(e) or attempt == max_retries - 1:
+                raise
+            
+            delay = base_delay * (2 ** attempt)
+            logger.warning(
+                f"{operation_name} failed (attempt {attempt + 1}/{max_retries}): {e}. "
+                f"Retrying in {delay}s..."
+            )
+            time.sleep(delay)
+```
+
+**Transient Error Detection**:
+
+```python
+def is_transient_error(error: Exception) -> bool:
+    """
+    Determine if an error is transient (should be retried).
+    
+    Transient errors:
+    - Network errors (ConnectionError, TimeoutError)
+    - Rate limiting (429 status codes)
+    - Server errors (500, 502, 503, 504)
+    - Model reloading (local LLMs)
+    
+    Non-transient errors:
+    - Validation errors (400, 422)
+    - Authentication errors (401, 403)
+    - Not found errors (404)
+    """
+```
+
+**LLM Client Error Handling** (`agents/tools/llm_client.py`):
+
+Each LLM provider includes specific error handling:
+
+- **Gemini**: Handles quota exceeded, rate limits, and API errors
+- **OpenAI**: Handles rate limits, server errors, and timeout errors
+- **Local LLM**: Handles model reloading and connection errors
+
+### Agent-Level Error Handling
+
+**JSON Extraction Errors** (`agents/tools/json_parser.py`):
+
+```python
+def extract_json(text: str, agent_name: str = "agent") -> dict:
+    """
+    Extract JSON from LLM response with comprehensive error handling.
+    
+    Error Handling:
+    1. Tries to find JSON in markdown code blocks
+    2. Tries to find JSON between ```json and ``` markers
+    3. Tries to find JSON object/array directly
+    4. Provides helpful error messages with context
+    """
+    try:
+        # Try multiple extraction strategies
+        json_str = _extract_from_markdown(text) or _extract_direct_json(text)
+        return json.loads(json_str)
+    except json.JSONDecodeError as e:
+        # Provide helpful error message with context
+        error_msg = f"Failed to extract JSON from {agent_name} response"
+        # Include snippet of problematic text
+        raise ValueError(f"{error_msg}: {e}")
+```
+
+**Validation Errors** (`ir/validators.py`):
+
+```python
+def validate_dataset(ir: DatasetIR) -> List[QaIssue]:
+    """
+    Validate DatasetIR and return list of issues.
+    
+    Validation Checks:
+    - Primary key existence
+    - Foreign key references
+    - Column type consistency
+    - Distribution compatibility
+    - Derived column dependencies
+    
+    Returns:
+        List of QaIssue objects with:
+        - code: Issue code (e.g., "MISSING_PRIMARY_KEY")
+        - location: Where the issue occurs (e.g., "table:fact_sales")
+        - message: Human-readable error message
+    """
+```
+
+**Agent Retry Utility** (`agents/tools/agent_retry.py`):
+
+```python
+def call_llm_with_retry(
+    messages: List[Dict[str, str]],
+    model_class: Type[T],
+    max_retries: int = 2,
+    pre_process: Optional[Callable] = None,
+    custom_validation: Optional[Callable] = None
+) -> T:
+    """
+    Call LLM and parse response with retry logic.
+    
+    Process:
+    1. Call LLM with retry logic
+    2. Extract JSON from response
+    3. Pre-process JSON (fix common LLM mistakes)
+    4. Validate against Pydantic model
+    5. Run custom validation if provided
+    6. Retry on validation errors (up to max_retries)
+    
+    Error Handling:
+    - JSON extraction errors: retries with error message in prompt
+    - Validation errors: retries with validation errors in prompt
+    - Non-retryable errors: raises immediately
+    """
+```
+
+### Generation-Level Error Handling
+
+**Table Generation Failures** (`generation/engine/pipeline.py`):
+
+```python
+def generate_from_ir(ir: DatasetIR, out_dir: Path, seed: int, chunk_rows: int) -> None:
+    """
+    Generate data with graceful failure handling.
+    
+    Error Handling:
+    - Dimension generation failures: logs error, continues with remaining tables
+    - Fact generation failures: logs error, continues with remaining tables
+    - Reports all failures at the end
+    - Does not stop pipeline on single table failure
+    """
+    failed_dimensions = []
+    failed_tables = []
+    
+    # Generate dimensions
+    for name, table_spec in dims.items():
+        try:
+            df = generate_dimension(table_spec, ir, rng, derived_reg)
+            write_csv(df, output_path)
+        except Exception as e:
+            logger.error(f"Failed to generate dimension '{name}': {e}")
+            failed_dimensions.append(name)
+            # Continue with next table
+    
+    # Generate facts
+    for name, table_spec in facts.items():
+        try:
+            stream = generate_fact_stream(...)
+            write_csv_stream(stream, output_path)
+        except Exception as e:
+            logger.error(f"Failed to generate fact table '{name}': {e}")
+            failed_tables.append(name)
+            # Continue with next table
+    
+    # Report results
+    if failed_dimensions or failed_tables:
+        logger.warning(f"Generation completed with {len(failed_dimensions) + len(failed_tables)} failures")
+```
+
+**Derived Column Evaluation Errors** (`generation/engine/fact_generator.py`):
+
+```python
+# Phase 2: Compute derived columns
+for col_name in derived_cols:
+    try:
+        df_chunk[col_name] = eval_derived(prog, df_chunk, rng=rng)
+    except KeyError as e:
+        # Missing column dependency
+        missing_col = str(e).strip("'")
+        logger.error(
+            f"Failed to compute derived column '{col_name}': "
+            f"Missing column '{missing_col}'. "
+            f"Available columns: {list(df_chunk.columns)}. "
+            f"Expression: {prog.expr}. "
+            f"Dependencies: {prog.dependencies}."
+        )
+        raise ValueError(
+            f"Derived column '{col_name}' depends on column '{missing_col}' "
+            f"which is not available."
+        ) from e
+    except Exception as e:
+        logger.error(
+            f"Failed to compute derived column '{col_name}': {e}. "
+            f"Expression: {prog.expr}."
+        )
+        raise
+```
+
+### Evaluation-Level Error Handling
+
+**Statistical Test Failures** (`evaluation/report_builder.py`):
+
+```python
+def evaluate(ir: DatasetIR, dfs: Dict[str, pd.DataFrame], cfg: EvaluationConfig) -> EvaluationReport:
+    """
+    Evaluate data with graceful failure handling.
+    
+    Error Handling:
+    - Missing tables: logs warning, skips evaluation
+    - Missing columns: logs warning, skips column evaluation
+    - Statistical test failures: marks as failed, continues
+    - Query execution errors: marks as failed, continues
+    - Returns partial results even if some checks fail
+    """
+    # Schema validation
+    issues = check_pk_fk(ir)  # May return issues, but doesn't stop
+    
+    # Column evaluation
+    for cg in ir.generation.columns:
+        try:
+            # Run statistical tests
+            metrics = compute_metrics(df, cg, cfg)
+        except Exception as e:
+            logger.warning(f"Failed to evaluate column {cg.table}.{cg.column}: {e}")
+            # Continue with next column
+    
+    # Workload evaluation
+    for w in ir.workload.targets:
+        try:
+            result = run_workload(w, dfs, cfg)
+        except Exception as e:
+            logger.warning(f"Failed to execute workload: {e}")
+            # Continue with next workload
+```
+
+### Logging System
+
+**Logging Configuration** (`config/logging.py`):
+
+```python
+def setup_logging(level: str = "INFO", log_file: Optional[Path] = None) -> None:
+    """
+    Configure logging for the application.
+    
+    Features:
+    - Console logging with colored output
+    - Optional file logging
+    - Configurable log levels
+    - Structured log format with timestamps
+    """
+    logging.basicConfig(
+        level=getattr(logging, level.upper()),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            *([logging.FileHandler(log_file)] if log_file else [])
+        ]
+    )
+```
+
+**Logger Usage**:
+
+```python
+from nl2data.config.logging import get_logger
+
+logger = get_logger(__name__)
+
+logger.info("Starting data generation")
+logger.warning("Table generation failed, continuing...")
+logger.error("Critical error occurred", exc_info=True)
+logger.debug("Detailed debug information")
+```
+
+### Error Message Best Practices
+
+**Helpful Error Messages**:
+
+1. **Context**: Include what operation was being performed
+2. **Location**: Specify where the error occurred (table, column, etc.)
+3. **Available Information**: Show what was available (columns, values, etc.)
+4. **Suggestions**: Provide hints on how to fix the issue
+5. **Truncation**: Long error messages are truncated to prevent log spam
+
+**Example Error Messages**:
+
+```python
+# Good error message
+raise ValueError(
+    f"Derived column '{col_name}' in table '{table.name}' depends on "
+    f"column '{missing_col}' which is not available. "
+    f"Available columns: {list(df_chunk.columns)}. "
+    f"Expression: {prog.expr}. "
+    f"Dependencies: {prog.dependencies}."
+)
+
+# Bad error message
+raise ValueError("Column not found")
+```
+
+### Robustness Features
+
+1. **Partial Results**: System continues even if some components fail
+2. **Graceful Degradation**: Falls back to simpler operations when possible
+3. **Error Recovery**: Retries transient errors automatically
+4. **Comprehensive Logging**: All errors are logged with context
+5. **User-Friendly Messages**: Errors include helpful context and suggestions
 
 ### Data Generation Robustness
 
@@ -5103,6 +7166,185 @@ messages = [
 3. **Query Error Handling**: Catches SQL errors and reports them
 
 ---
+
+## Testing Framework
+
+The project includes comprehensive testing utilities for validating the pipeline on multiple example queries.
+
+### Test Scripts
+
+#### 1. Full Pipeline Testing (`test_all_queries.py`)
+
+**Purpose**: Test the complete pipeline (NL → IR → Data → Evaluation) on a set of example queries.
+
+**Structure**:
+```python
+def test_query(
+    query_num: int,
+    query_text: str,
+    output_base: Path,
+    ir_only: bool = False
+) -> Tuple[bool, str]:
+    """
+    Test a single query through the full pipeline.
+    
+    Args:
+        query_num: Query number for identification
+        query_text: Natural language description
+        output_base: Base directory for outputs
+        ir_only: If True, only generate IR (skip data generation)
+        
+    Returns:
+        Tuple of (success: bool, message: str)
+    """
+    # 1. Create output directory
+    output_dir = output_base / f"query_{query_num}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 2. Run NL → IR pipeline
+    agents = create_agent_list(query_text)
+    board = Orchestrator(agents).execute(Blackboard())
+    ir = board.dataset_ir
+    
+    # 3. Save IR
+    save_ir_to_json(ir, output_dir / "dataset_ir.json")
+    
+    if ir_only:
+        return True, "IR generated successfully"
+    
+    # 4. Generate data
+    generate_from_ir(ir, output_dir, seed=7, chunk_rows=1_000_000)
+    
+    # 5. Evaluate (optional)
+    # ...
+    
+    return True, "Success"
+```
+
+**Usage**:
+```bash
+python test_all_queries.py
+```
+
+**Features**:
+- Tests multiple queries from `example queries.txt`
+- Generates IR and data for each query
+- Creates separate output directories per query
+- Reports success/failure for each query
+- Can run in IR-only mode for faster testing
+
+#### 2. Phase 1 Evaluation (`test_phase1_evaluation.py`)
+
+**Purpose**: Evaluate IR quality (validation + derived column compilation) without generating data.
+
+**Structure**:
+```python
+def evaluate_ir(ir: DatasetIR) -> Tuple[bool, Dict]:
+    """
+    Evaluate IR quality (validation + derived column compilation).
+    
+    Returns:
+        Tuple of (is_valid, evaluation_summary)
+    """
+    summary = {
+        "validation_issues": [],
+        "derived_compilation_errors": [],
+        "num_tables": len(ir.logical.tables),
+        "num_columns": sum(len(t.columns) for t in ir.logical.tables.values()),
+        "num_derived_columns": 0,
+        "has_primary_keys": True,
+        "has_foreign_keys": False,
+        "derived_columns_valid": True,
+    }
+    
+    # 1. Validate IR structure
+    validation_issues = validate_dataset(ir)
+    summary["validation_issues"] = [...]
+    
+    # 2. Check primary keys
+    for table_name, table in ir.logical.tables.items():
+        if not table.primary_key:
+            summary["has_primary_keys"] = False
+        if table.foreign_keys:
+            summary["has_foreign_keys"] = True
+    
+    # 3. Count derived columns
+    derived_cols = count_derived_columns(ir)
+    summary["num_derived_columns"] = len(derived_cols)
+    
+    # 4. Try to compile derived columns
+    try:
+        derived_reg = build_derived_registry(ir)
+        summary["derived_columns_valid"] = True
+        summary["derived_programs"] = len(derived_reg.programs)
+    except Exception as e:
+        summary["derived_columns_valid"] = False
+        summary["derived_compilation_errors"] = [str(e)]
+    
+    # Overall validity
+    is_valid = (
+        len(validation_issues) == 0 and
+        summary["has_primary_keys"] and
+        summary["derived_columns_valid"]
+    )
+    
+    return is_valid, summary
+```
+
+**Usage**:
+```bash
+python test_phase1_evaluation.py
+```
+
+**Features**:
+- Fast evaluation (no data generation)
+- Validates IR structure
+- Checks derived column compilation
+- Reports validation issues
+- Useful for debugging agent outputs
+
+### Test Output Structure
+
+**Directory Layout**:
+```
+test_output/
+├── query_1/
+│   ├── dataset_ir.json
+│   ├── fact_sales.csv
+│   ├── dim_product.csv
+│   └── ir_evaluation.json
+├── query_2/
+│   └── ...
+└── test_report.md
+```
+
+**Test Report** (`test_output/test_report.md`):
+- Summary of all queries tested
+- Status for each query (✅ Generated, ❌ Failed)
+- IR evaluation results
+- Common issues and patterns
+
+### Running Tests
+
+**Full Pipeline Test**:
+```bash
+# Test all queries
+python test_all_queries.py
+
+# Test specific query
+python test_all_queries.py --query 1
+```
+
+**Phase 1 Evaluation**:
+```bash
+# Evaluate IR quality for all queries
+python test_phase1_evaluation.py
+```
+
+**Test Configuration**:
+- Output directory: `test_output/`
+- Seed: 7 (for reproducibility)
+- Chunk rows: 1,000,000 (for fact tables)
 
 ## Known Limitations and Future Work
 
@@ -5164,7 +7406,149 @@ The system demonstrates how LLMs can be effectively used in a structured pipelin
 
 ---
 
-**Document Version**: 1.0  
+**Document Version**: 2.0  
 **Last Updated**: 2024  
 **Project**: NL2Data - Natural Language to Synthetic Relational Data Generation System
+
+---
+
+## Additional Components
+
+### Monitoring System (`monitoring/quality_metrics.py`)
+
+**Quality Metrics Tracking**:
+
+The system tracks quality metrics across the pipeline for monitoring and debugging:
+
+- **Agent Metrics**: Execution time, success/failure, error messages per agent
+- **Query Metrics**: Total issues, spec coverage, repair attempts, processing time
+- **Issue Aggregation**: Counts of validation issues by code
+
+**Usage**:
+
+```python
+from nl2data.monitoring.quality_metrics import QualityMetricsCollector
+
+collector = QualityMetricsCollector()
+collector.start_query("query_1", "Generate a retail dataset...")
+collector.start_agent("ManagerAgent")
+# ... agent execution ...
+collector.end_agent("ManagerAgent", success=True)
+metrics = collector.get_query_metrics("query_1")
+```
+
+**Metrics Collected**:
+- Agent execution times
+- Validation issue counts by code
+- Generation spec coverage percentage
+- Repair loop attempts and success
+- Total processing time per query
+
+### Utility Modules
+
+**IR I/O** (`utils/ir_io.py`):
+
+```python
+def load_ir_from_json(ir_path: Path) -> DatasetIR:
+    """Load DatasetIR from JSON file with error handling."""
+    
+def save_ir_to_json(ir: DatasetIR, ir_path: Path) -> None:
+    """Save DatasetIR to JSON file."""
+```
+
+**Data Loading** (`utils/data_loader.py`):
+
+```python
+def load_csv_files(data_dir: Path) -> Dict[str, pd.DataFrame]:
+    """Load all CSV files from directory into DataFrames."""
+```
+
+**Agent Factory** (`utils/agent_factory.py`):
+
+```python
+def create_agent_list(nl_description: str) -> List[BaseAgent]:
+    """Create list of agents in execution order."""
+    
+def create_agent_sequence(nl_description: str) -> List[Tuple[str, BaseAgent]]:
+    """Create agent sequence with names for logging."""
+```
+
+### CLI Commands
+
+The CLI provides four main commands:
+
+1. **`end2end`**: Complete pipeline (NL → IR → Data)
+2. **`nl2ir`**: Convert NL to IR only
+3. **`generate`**: Generate data from existing IR
+4. **`evaluate_data`**: Evaluate generated data against IR
+
+See [Usage Examples](#usage-examples) section for detailed command documentation.
+
+---
+
+## Appendix: Complete Feature List
+
+### DSL Functions (Complete Reference)
+
+**Arithmetic**: `+`, `-`, `*`, `/`, `//`, `%`, `**`
+
+**Comparison**: `<`, `<=`, `>`, `>=`, `==`, `!=`, `in`, `not in`
+
+**Boolean**: `and`, `or`, `not`
+
+**Math**: `abs`, `sqrt`, `log`, `exp`, `clip`
+
+**Date/Time Extraction**: `hour`, `date`, `day_of_week`, `day_of_month`, `month`, `year`
+
+**Time Arithmetic**: `seconds`, `minutes`, `hours`, `days`
+
+**Type Casting**: `int`, `float`, `bool`, `str`
+
+**Distributions**: `normal`, `lognormal`, `pareto`, `uniform`
+
+**Conditional**: `where`, `case_when`
+
+**String Operations**: `concat`, `format`, `substring`
+
+**Helper Functions**: `between`, `geo_distance`, `ts_diff`, `overlap_days`
+
+**Null Checks**: `isnull`, `notnull`
+
+**Weighted Choice**: `weighted_choice`, `weighted_choice_if`
+
+### Distribution Types
+
+- **Uniform**: `DistUniform` (low, high)
+- **Normal**: `DistNormal` (mean, std)
+- **Zipf**: `DistZipf` (s, n)
+- **Seasonal**: `DistSeasonal` (granularity, weights)
+- **Categorical**: `DistCategorical` (domain with values/probs)
+- **Derived**: `DistDerived` (expression, dtype)
+- **Window**: `DistWindow` (expression, partition_by, order_by, frame)
+
+### Event Effect Types
+
+- **multiply_distribution**: Multiply column values by factor
+- **add_offset**: Add constant offset to values
+- **set_value**: Set values to specific value (with optional probability)
+- **change_distribution**: Change distribution (future enhancement)
+
+### Window Frame Types
+
+- **RANGE**: Time-based windows (requires datetime order_by column)
+- **ROWS**: Row-based windows (works with any order_by column)
+
+### Provider Types
+
+- **Faker**: `faker.*` (name, email, phone_number, address, city, country, company, job, date, date_time)
+- **Mimesis**: `mimesis.*` (full_name, email, telephone, address)
+- **Geo Lookup**: `lookup.*` (city, country from GeoNames datasets)
+
+### Evaluation Metrics
+
+- **Schema**: PK/FK integrity, table/column coverage
+- **Statistical**: KS test, chi-square, Wasserstein distance, Zipf R²
+- **Relational**: FK coverage, join selectivity, degree histograms
+- **Workload**: Query runtime, correctness
+- **Table-Level**: Marginal distributions, correlations, mutual information
 

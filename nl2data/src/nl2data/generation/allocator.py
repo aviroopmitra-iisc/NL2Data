@@ -29,41 +29,6 @@ def zipf_probs(K: int, alpha: float) -> np.ndarray:
     return probs
 
 
-def clip_alpha_for_max_share(K: int, max_top1_share: float, alpha_min: float = 0.1) -> float:
-    """
-    Find alpha such that probs[0] <= max_top1_share.
-
-    Uses binary search to find the maximum alpha that satisfies the constraint.
-
-    Args:
-        K: Number of items
-        max_top1_share: Maximum allowed probability for top item
-        alpha_min: Minimum alpha to consider (default: 0.1)
-
-    Returns:
-        Clipped alpha value
-    """
-    if max_top1_share >= 1.0:
-        return 1.5  # Default high skew
-
-    # Binary search for alpha
-    alpha_low = alpha_min
-    alpha_high = 3.0  # Upper bound
-
-    for _ in range(20):  # Max 20 iterations
-        alpha_mid = (alpha_low + alpha_high) / 2.0
-        probs = zipf_probs(K, alpha_mid)
-        if probs[0] <= max_top1_share:
-            alpha_low = alpha_mid
-        else:
-            alpha_high = alpha_mid
-
-        if alpha_high - alpha_low < 0.01:
-            break
-
-    return alpha_low
-
-
 def fk_assignments(
     pk_ids: np.ndarray,
     n_rows: int,
@@ -126,38 +91,4 @@ def fk_assignments(
             if c > 0:
                 yield pk_ids[i], int(c)
 
-
-def generate_fk_array(
-    pk_ids: np.ndarray,
-    n_rows: int,
-    probs: np.ndarray,
-    rng: np.random.Generator,
-    shuffle: bool = True,
-) -> np.ndarray:
-    """
-    Generate full FK array from assignments.
-
-    This is a convenience function that materializes the full FK array.
-    For very large n_rows, prefer using fk_assignments() directly.
-
-    Args:
-        pk_ids: Sorted array of parent PK values
-        n_rows: Total number of fact rows to generate
-        probs: Zipf probabilities
-        rng: Random number generator
-        shuffle: Whether to shuffle the result (default: True)
-
-    Returns:
-        Array of FK values of length n_rows
-    """
-    fk_list = []
-    for pk_id, count in fk_assignments(pk_ids, n_rows, probs, rng):
-        fk_list.extend([pk_id] * count)
-
-    result = np.array(fk_list, dtype=pk_ids.dtype)
-
-    if shuffle:
-        rng.shuffle(result)
-
-    return result
 

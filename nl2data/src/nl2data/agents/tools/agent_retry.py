@@ -17,6 +17,72 @@ logger = get_logger(__name__)
 T = TypeVar('T', bound=BaseModel)
 
 
+def _get_json_error_hint(error: JSONParseError) -> str:
+    """
+    Get specific error hint based on JSON parse error.
+    
+    Args:
+        error: JSONParseError exception
+        
+    Returns:
+        Specific error hint message for the LLM
+    """
+    error_str = str(error).lower()
+    if "trailing comma" in error_str or "expecting ','" in error_str:
+        return "Please check for trailing commas and ensure all JSON syntax is correct. Return ONLY valid JSON, no markdown formatting."
+    elif "expecting property name" in error_str or "quote" in error_str:
+        return "Please ensure all keys are properly quoted with double quotes. Return ONLY valid JSON."
+    else:
+        return "Please return ONLY valid JSON, no markdown formatting or explanations. Ensure proper JSON syntax."
+
+
+def _format_validation_error(error: Exception) -> str:
+    """
+    Format a Pydantic ValidationError into a clear, actionable message for the LLM.
+    
+    Args:
+        error: The ValidationError exception
+        
+    Returns:
+        A formatted error message with specific field paths and expected types
+    """
+    if isinstance(error, ValidationError):
+        error_messages = []
+        error_messages.append("The JSON structure failed validation. Here are the specific errors:")
+        
+        # Pydantic v2 ValidationError has errors() method that returns structured error info
+        for err in error.errors():
+            loc = " -> ".join(str(x) for x in err.get("loc", []))
+            msg = err.get("msg", "Validation error")
+            error_type = err.get("type", "")
+            input_value = err.get("input", None)
+            
+            # Build a clear error message
+            error_msg = f"\n- Field: {loc}"
+            error_msg += f"\n  Error: {msg}"
+            
+            # Add helpful context based on error type
+            if error_type == "string_type" and input_value is not None:
+                error_msg += f"\n  Issue: Expected a string, but got {type(input_value).__name__} with value {input_value}"
+                error_msg += f"\n  Fix: Convert the value to a string (e.g., {input_value} -> \"{input_value}\")"
+            elif error_type == "int_parsing" or error_type == "int_parsing_size":
+                error_msg += f"\n  Issue: Expected an integer, but got {type(input_value).__name__} with value {input_value}"
+            elif error_type == "float_parsing":
+                error_msg += f"\n  Issue: Expected a float, but got {type(input_value).__name__} with value {input_value}"
+            elif "missing" in error_type:
+                error_msg += f"\n  Fix: Add the missing required field"
+            
+            error_messages.append(error_msg)
+        
+        return "\n".join(error_messages)
+    else:
+        # For non-ValidationError exceptions, return a truncated summary
+        error_str = str(error)
+        if len(error_str) > 500:
+            error_str = error_str[:500] + "..."
+        return f"Validation error: {error_str}"
+
+
 def call_llm_with_retry(
     messages: List[Dict[str, str]],
     ir_model: Type[T],
@@ -56,6 +122,8 @@ def call_llm_with_retry(
         try:
             # Step 1: Call LLM and parse JSON
             raw = chat(messages)
+            # Append assistant's response to messages for conversation history
+            messages.append({"role": "assistant", "content": raw})
             data = extract_json(raw)
             
             # Step 2: Post-process if needed (e.g., wrap lists in dicts)
@@ -79,11 +147,12 @@ def call_llm_with_retry(
         except JSONParseError as e:
             if attempt < max_retries - 1:
                 logger.warning(
-                    f"JSON parsing failed (attempt {attempt + 1}/{max_retries}), retrying..."
+                    f"JSON parsing failed (attempt {attempt + 1}/{max_retries}): {str(e)[:200]}"
                 )
+                error_hint = _get_json_error_hint(e)
                 messages.append({
                     "role": "user",
-                    "content": "Please return ONLY valid JSON, no markdown formatting or explanations."
+                    "content": error_hint
                 })
             else:
                 raise
@@ -91,6 +160,7 @@ def call_llm_with_retry(
         except (ValidationError, ValueError) as e:
             # IR validation error or custom validation error
             if attempt < max_retries - 1:
+                formatted_error = _format_validation_error(e)
                 error_summary = str(e)[:ERROR_MESSAGE_TRUNCATE_LENGTH]
                 logger.warning(
                     f"IR validation failed (attempt {attempt + 1}/{max_retries}): {error_summary}"
@@ -98,8 +168,9 @@ def call_llm_with_retry(
                 messages.append({
                     "role": "user",
                     "content": (
-                        f"The previous response failed validation. Error: {error_summary}. "
-                        f"Please fix the JSON structure and ensure all required fields are present and correctly formatted."
+                        f"The previous response failed validation.\n\n{formatted_error}\n\n"
+                        f"Please fix these specific issues in your JSON response. Pay special attention to the field paths "
+                        f"and type conversions mentioned above."
                     )
                 })
             else:

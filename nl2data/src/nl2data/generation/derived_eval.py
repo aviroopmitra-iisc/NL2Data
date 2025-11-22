@@ -20,9 +20,8 @@ def build_env(df: pd.DataFrame, rng: Optional[np.random.Generator] = None) -> Di
     """
     env: Dict[str, Any] = {}
     
-    # Column references
-    for col in df.columns:
-        env[col] = df[col]
+    # IMPORTANT: Add functions first, then columns, so columns take precedence
+    # This allows columns to shadow functions (e.g., 'month' column vs month() function)
     
     # Math functions (vectorized)
     env["log"] = np.log
@@ -284,6 +283,373 @@ def build_env(df: pd.DataFrame, rng: Optional[np.random.Generator] = None) -> Di
     
     env["weighted_choice_if"] = weighted_choice_if_func
     
+    # Type casting functions (vectorized)
+    def float_func(x):
+        """Convert to float, handling Series and scalars."""
+        if isinstance(x, pd.Series):
+            return pd.to_numeric(x, errors='coerce')
+        return float(x)
+    
+    def int_func(x):
+        """Convert to int, handling Series and scalars."""
+        if isinstance(x, pd.Series):
+            return pd.to_numeric(x, errors='coerce').astype(int)
+        return int(x)
+    
+    def bool_func(x):
+        """Convert to bool, handling Series and scalars."""
+        if isinstance(x, pd.Series):
+            return x.astype(bool)
+        return bool(x)
+    
+    def str_func(x):
+        """Convert to string, handling Series and scalars."""
+        if isinstance(x, pd.Series):
+            return x.astype(str)
+        return str(x)
+    
+    env["float"] = float_func
+    env["int"] = int_func
+    env["bool"] = bool_func
+    env["str"] = str_func
+    
+    # Distribution functions (require rng)
+    def normal_func(mean, std):
+        """Generate normal distribution samples."""
+        if rng is None:
+            raise ValueError("normal() requires a random number generator. Ensure rng is passed to build_env().")
+        n = len(df)
+        if isinstance(mean, pd.Series) or isinstance(std, pd.Series):
+            # Per-row parameters
+            result = pd.Series(index=df.index, dtype=float)
+            for idx in df.index:
+                m = mean.loc[idx] if isinstance(mean, pd.Series) else mean
+                s = std.loc[idx] if isinstance(std, pd.Series) else std
+                result.loc[idx] = rng.normal(m, s)
+            return result
+        else:
+            # Fixed parameters for all rows
+            return pd.Series(rng.normal(mean, std, size=n), index=df.index)
+    
+    def lognormal_func(mean, sigma):
+        """Generate log-normal distribution samples."""
+        if rng is None:
+            raise ValueError("lognormal() requires a random number generator. Ensure rng is passed to build_env().")
+        n = len(df)
+        if isinstance(mean, pd.Series) or isinstance(sigma, pd.Series):
+            # Per-row parameters
+            result = pd.Series(index=df.index, dtype=float)
+            for idx in df.index:
+                m = mean.loc[idx] if isinstance(mean, pd.Series) else mean
+                s = sigma.loc[idx] if isinstance(sigma, pd.Series) else sigma
+                result.loc[idx] = rng.lognormal(m, s)
+            return result
+        else:
+            # Fixed parameters for all rows
+            return pd.Series(rng.lognormal(mean, sigma, size=n), index=df.index)
+    
+    def pareto_func(alpha):
+        """Generate Pareto distribution samples."""
+        if rng is None:
+            raise ValueError("pareto() requires a random number generator. Ensure rng is passed to build_env().")
+        n = len(df)
+        if isinstance(alpha, pd.Series):
+            # Per-row parameters
+            result = pd.Series(index=df.index, dtype=float)
+            for idx in df.index:
+                a = alpha.loc[idx]
+                result.loc[idx] = rng.pareto(a)
+            return result
+        else:
+            # Fixed parameter for all rows
+            return pd.Series(rng.pareto(alpha, size=n), index=df.index)
+    
+    env["normal"] = normal_func
+    env["lognormal"] = lognormal_func
+    env["pareto"] = pareto_func
+    
+    # case_when macro function
+    def case_when_func(*args):
+        """
+        case_when(cond1, val1, cond2, val2, ..., default)
+        Returns val1 if cond1 is True, val2 if cond2 is True, etc., otherwise default.
+        """
+        if len(args) < 3:
+            raise ValueError("case_when() requires at least 3 arguments (condition, value, default)")
+        if len(args) % 2 == 0:
+            raise ValueError("case_when() requires odd number of arguments (pairs of condition/value plus default)")
+        
+        # Last argument is the default value
+        default = args[-1]
+        
+        # Ensure default is a Series if needed
+        if isinstance(default, pd.Series):
+            default_series = default
+        else:
+            default_series = pd.Series([default] * len(df), index=df.index)
+        
+        result = default_series.copy()
+        
+        # Process pairs: (condition, value) in reverse order so first matching condition wins
+        # We process in reverse and use np.where to build up the result
+        for i in range(len(args) - 3, -1, -2):  # Start from second-to-last, go backwards by 2
+            cond = args[i]
+            val = args[i + 1]
+            
+            # Evaluate condition (should be boolean Series or scalar)
+            if isinstance(cond, pd.Series):
+                cond_series = cond
+            else:
+                # Scalar condition - broadcast to all rows
+                cond_series = pd.Series([bool(cond)] * len(df), index=df.index)
+            
+            # Ensure val is a Series if needed
+            if isinstance(val, pd.Series):
+                val_series = val
+            else:
+                val_series = pd.Series([val] * len(df), index=df.index)
+            
+            # Update result where condition is True
+            result = np.where(cond_series, val_series, result)
+        
+        return result
+    
+    env["case_when"] = case_when_func
+    
+    # String operations
+    def concat_func(*args):
+        """Concatenate multiple values into a string."""
+        if len(args) == 0:
+            return pd.Series("", index=df.index)
+        # Convert all to string and concatenate
+        result = args[0].astype(str) if isinstance(args[0], pd.Series) else pd.Series([str(args[0])] * len(df), index=df.index)
+        for arg in args[1:]:
+            arg_str = arg.astype(str) if isinstance(arg, pd.Series) else pd.Series([str(arg)] * len(df), index=df.index)
+            result = result + arg_str
+        return result
+    
+    def format_func(template, *args):
+        """Format string template with values (like Python's str.format)."""
+        # For simplicity, support basic {0}, {1} style formatting
+        if isinstance(template, str):
+            # Single template string - apply to all rows
+            if len(args) == 0:
+                return pd.Series([template] * len(df), index=df.index)
+            # Convert args to Series if needed
+            arg_series = []
+            for arg in args:
+                if isinstance(arg, pd.Series):
+                    arg_series.append(arg)
+                else:
+                    arg_series.append(pd.Series([arg] * len(df), index=df.index))
+            # Format each row
+            result = pd.Series(index=df.index, dtype=object)
+            for idx in df.index:
+                values = [arg.loc[idx] if isinstance(arg, pd.Series) else arg for arg in arg_series]
+                try:
+                    result.loc[idx] = template.format(*[str(v) for v in values])
+                except (ValueError, KeyError, IndexError) as e:
+                    # Fallback: simple string replacement for format errors
+                    formatted = template
+                    for i, v in enumerate(values):
+                        formatted = formatted.replace(f'{{{i}}}', str(v))
+                    result.loc[idx] = formatted
+            return result.astype(str)
+        else:
+            # Template is a Series - format per row
+            if isinstance(template, pd.Series):
+                if len(args) == 0:
+                    return template.astype(str)
+                result = pd.Series(index=df.index, dtype=object)
+                arg_series = []
+                for arg in args:
+                    if isinstance(arg, pd.Series):
+                        arg_series.append(arg)
+                    else:
+                        arg_series.append(pd.Series([arg] * len(df), index=df.index))
+                for idx in df.index:
+                    tpl = str(template.loc[idx])
+                    values = [arg.loc[idx] for arg in arg_series]
+                    try:
+                        result.loc[idx] = tpl.format(*[str(v) for v in values])
+                    except (ValueError, KeyError, IndexError) as e:
+                        # Fallback: simple string replacement for format errors
+                        formatted = tpl
+                        for i, v in enumerate(values):
+                            formatted = formatted.replace(f'{{{i}}}', str(v))
+                        result.loc[idx] = formatted
+                return result.astype(str)
+            else:
+                return pd.Series([str(template)] * len(df), index=df.index)
+    
+    def substring_func(s, start, length=None):
+        """Extract substring from string(s)."""
+        if isinstance(s, pd.Series):
+            if length is not None:
+                return s.astype(str).str[start:start+length] if hasattr(s.astype(str), 'str') else s.astype(str).apply(lambda x: x[start:start+length] if isinstance(x, str) else str(x)[start:start+length])
+            else:
+                return s.astype(str).str[start:] if hasattr(s.astype(str), 'str') else s.astype(str).apply(lambda x: x[start:] if isinstance(x, str) else str(x)[start:])
+        else:
+            s_str = str(s)
+            if length is not None:
+                return pd.Series([s_str[start:start+length]] * len(df), index=df.index)
+            else:
+                return pd.Series([s_str[start:]] * len(df), index=df.index)
+    
+    env["concat"] = concat_func
+    env["format"] = format_func
+    env["substring"] = substring_func
+    
+    # Helper functions
+    def between_func(x, a, b):
+        """Check if x is between a and b (inclusive)."""
+        if isinstance(x, pd.Series):
+            return (x >= a) & (x <= b)
+        return a <= x <= b
+    
+    def geo_distance_func(lat1, lon1, lat2, lon2):
+        """
+        Calculate great-circle distance between two points using Haversine formula.
+        Returns distance in kilometers.
+        """
+        import math
+        
+        # Convert to radians
+        def to_radians(deg):
+            if isinstance(deg, pd.Series):
+                return deg * (math.pi / 180.0)
+            return deg * (math.pi / 180.0)
+        
+        # Haversine formula
+        R = 6371.0  # Earth radius in kilometers
+        
+        if isinstance(lat1, pd.Series):
+            # Vectorized calculation
+            lat1_rad = to_radians(lat1)
+            lon1_rad = to_radians(lon1)
+            lat2_rad = to_radians(lat2)
+            lon2_rad = to_radians(lon2)
+            
+            dlat = lat2_rad - lat1_rad
+            dlon = lon2_rad - lon1_rad
+            
+            a = np.sin(dlat / 2) ** 2 + np.cos(lat1_rad) * np.cos(lat2_rad) * np.sin(dlon / 2) ** 2
+            c = 2 * np.arcsin(np.sqrt(a))
+            
+            return pd.Series(R * c, index=lat1.index)
+        else:
+            # Scalar calculation
+            lat1_rad = to_radians(lat1)
+            lon1_rad = to_radians(lon1)
+            lat2_rad = to_radians(lat2)
+            lon2_rad = to_radians(lon2)
+            
+            dlat = lat2_rad - lat1_rad
+            dlon = lon2_rad - lon1_rad
+            
+            a = math.sin(dlat / 2) ** 2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
+            c = 2 * math.asin(math.sqrt(a))
+            
+            return R * c
+    
+    def ts_diff_func(unit, t1, t2):
+        """
+        Calculate time difference between t1 and t2 in specified unit.
+        Unit can be: 'seconds', 'minutes', 'hours', 'days'
+        """
+        # Check if inputs are scalars
+        is_scalar = not isinstance(t1, pd.Series) and not isinstance(t2, pd.Series)
+        
+        # Convert to datetime if needed
+        if not isinstance(t1, pd.Series):
+            t1_series = pd.Series([t1])
+        else:
+            t1_series = t1
+        if not isinstance(t2, pd.Series):
+            t2_series = pd.Series([t2])
+        else:
+            t2_series = t2
+        
+        # Ensure datetime types
+        if not pd.api.types.is_datetime64_any_dtype(t1_series):
+            t1_series = pd.to_datetime(t1_series)
+        if not pd.api.types.is_datetime64_any_dtype(t2_series):
+            t2_series = pd.to_datetime(t2_series)
+        
+        # Calculate difference
+        diff = t2_series - t1_series
+        
+        # Convert to requested unit
+        unit_lower = str(unit).lower() if isinstance(unit, str) else 'days'
+        if unit_lower == 'seconds':
+            result = diff.dt.total_seconds()
+        elif unit_lower == 'minutes':
+            result = diff.dt.total_seconds() / 60.0
+        elif unit_lower == 'hours':
+            result = diff.dt.total_seconds() / 3600.0
+        else:  # days (default)
+            # Use total_seconds() / 86400 for fractional days
+            result = diff.dt.total_seconds() / 86400.0
+        
+        # If inputs were scalars, return scalar
+        if is_scalar:
+            return result.iloc[0]
+        return result
+    
+    def overlap_days_func(start1, end1, start2, end2):
+        """
+        Calculate number of overlapping days between two date intervals.
+        Returns 0 if intervals don't overlap.
+        """
+        # Convert to datetime if needed
+        def to_datetime(x):
+            if isinstance(x, pd.Series):
+                if not pd.api.types.is_datetime64_any_dtype(x):
+                    return pd.to_datetime(x)
+                return x
+            else:
+                return pd.to_datetime(x)
+        
+        start1_dt = to_datetime(start1)
+        end1_dt = to_datetime(end1)
+        start2_dt = to_datetime(start2)
+        end2_dt = to_datetime(end2)
+        
+        # Handle Series vs scalar
+        if isinstance(start1_dt, pd.Series):
+            # Vectorized calculation
+            # Overlap = max(0, min(end1, end2) - max(start1, start2))
+            overlap_start = pd.concat([start1_dt, start2_dt], axis=1).max(axis=1)
+            overlap_end = pd.concat([end1_dt, end2_dt], axis=1).min(axis=1)
+            
+            # Calculate overlap in days
+            overlap = overlap_end - overlap_start
+            overlap_days = overlap.dt.total_seconds() / 86400.0
+            
+            # Set negative overlaps to 0
+            overlap_days = overlap_days.clip(lower=0)
+            
+            return overlap_days
+        else:
+            # Scalar calculation
+            overlap_start = max(start1_dt, start2_dt)
+            overlap_end = min(end1_dt, end2_dt)
+            
+            if overlap_end < overlap_start:
+                return 0
+            
+            overlap = overlap_end - overlap_start
+            return overlap.total_seconds() / (24 * 3600)  # Convert to days
+    
+    env["between"] = between_func
+    env["geo_distance"] = geo_distance_func
+    env["ts_diff"] = ts_diff_func
+    env["overlap_days"] = overlap_days_func
+    
+    # Column references (added AFTER functions so columns can shadow function names)
+    for col in df.columns:
+        env[col] = df[col]
+    
     return env
 
 
@@ -406,6 +772,49 @@ def eval_node(node: ast.AST, env: Dict[str, Any]) -> Any:
                         ok = current != right  # Use != for Series comparison
                     else:
                         ok = current is not right  # Use 'is not' for scalar comparison
+            elif isinstance(op, ast.In):
+                # Handle 'in' operator: x in [1, 2, 3] or x in (1, 2, 3)
+                # right should be a list/tuple/array of values
+                # Convert tuple/list to a list for isin()
+                if isinstance(right, tuple):
+                    right_list = list(right)
+                elif isinstance(right, list):
+                    right_list = right
+                elif isinstance(right, np.ndarray):
+                    right_list = right.tolist()
+                elif isinstance(right, pd.Series):
+                    right_list = right.tolist()
+                else:
+                    # Scalar right - treat as single-element list
+                    right_list = [right]
+                
+                if isinstance(current, pd.Series):
+                    # For Series, use isin()
+                    ok = current.isin(right_list)
+                else:
+                    # Scalar current
+                    ok = current in right_list
+            elif isinstance(op, ast.NotIn):
+                # Handle 'not in' operator: x not in [1, 2, 3] or x not in (1, 2, 3)
+                # Convert tuple/list to a list for isin()
+                if isinstance(right, tuple):
+                    right_list = list(right)
+                elif isinstance(right, list):
+                    right_list = right
+                elif isinstance(right, np.ndarray):
+                    right_list = right.tolist()
+                elif isinstance(right, pd.Series):
+                    right_list = right.tolist()
+                else:
+                    # Scalar right - treat as single-element list
+                    right_list = [right]
+                
+                if isinstance(current, pd.Series):
+                    # For Series, use ~isin()
+                    ok = ~current.isin(right_list)
+                else:
+                    # Scalar current
+                    ok = current not in right_list
             else:
                 raise ValueError(f"Unexpected Compare op {type(op)}")
             

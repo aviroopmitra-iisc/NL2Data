@@ -2,7 +2,7 @@
 
 from typing import Dict, List, Set, Tuple
 from nl2data.ir.dataset import DatasetIR
-from nl2data.ir.generation import DistDerived
+from nl2data.ir.generation import DistDerived, DistWindow
 from .derived_program import DerivedProgram, compile_derived
 
 # Key type: (table_name, column_name)
@@ -13,8 +13,10 @@ class DerivedRegistry:
     """Registry of compiled derived expressions with dependency ordering."""
 
     def __init__(self):
-        self.programs: Dict[DerivedKey, DerivedProgram] = {}
+        self.programs: Dict[DerivedKey, DerivedProgram] = {}  # Regular derived columns
+        self.windows: Dict[DerivedKey, DistWindow] = {}  # Window function columns
         self.order: Dict[str, List[str]] = {}  # table -> [col names in topological order]
+        self.window_order: Dict[str, List[str]] = {}  # table -> [window col names in order]
 
 
 def topo_sort_columns(dep_map: Dict[str, Set[str]]) -> List[str]:
@@ -92,7 +94,7 @@ def build_derived_registry(ir: DatasetIR) -> DerivedRegistry:
     Build a derived registry from DatasetIR.
     
     Compiles all derived expressions, extracts dependencies, and computes
-    topological ordering per table.
+    topological ordering per table. Separately tracks window columns.
     
     Args:
         ir: DatasetIR containing generation specifications
@@ -102,15 +104,20 @@ def build_derived_registry(ir: DatasetIR) -> DerivedRegistry:
     """
     reg = DerivedRegistry()
     
-    # Step 1: Collect derived specs and compile them
+    # Step 1: Collect derived specs and compile them (separate regular derived from windows)
     per_table_deps: Dict[str, Dict[str, Set[str]]] = {}
     
     for cg in ir.generation.columns:
-        if isinstance(cg.distribution, DistDerived):
-            table = cg.table
-            col = cg.column
-            dist = cg.distribution
-            
+        table = cg.table
+        col = cg.column
+        dist = cg.distribution
+        
+        if isinstance(dist, DistWindow):
+            # Window columns are tracked separately
+            reg.windows[(table, col)] = dist
+            reg.window_order.setdefault(table, []).append(col)
+        elif isinstance(dist, DistDerived):
+            # Regular derived columns
             # Compile expression
             prog = compile_derived(dist.expression, dist.dtype)
             reg.programs[(table, col)] = prog

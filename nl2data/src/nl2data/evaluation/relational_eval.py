@@ -296,7 +296,8 @@ def evaluate_relational_metrics(
     if con is not None:
         try:
             con.close()
-        except:
+        except Exception:
+            # Connection close errors are non-critical, ignore them
             pass
 
     return metrics

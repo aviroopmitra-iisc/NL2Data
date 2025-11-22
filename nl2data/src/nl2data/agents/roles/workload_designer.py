@@ -1,8 +1,7 @@
 """Workload designer agent for query workload specifications."""
 
 from nl2data.agents.base import BaseAgent, Blackboard
-from nl2data.agents.tools.llm_client import chat
-from nl2data.agents.tools.json_parser import extract_json, JSONParseError
+from nl2data.agents.tools.agent_retry import call_llm_with_retry
 from nl2data.agents.tools.error_handling import handle_agent_error
 from nl2data.prompts.loader import load_prompt, render_prompt
 from nl2data.ir.workload import WorkloadIR
@@ -57,63 +56,28 @@ class WorkloadDesigner(BaseAgent):
                 {"role": "user", "content": user_content},
             ]
 
-            # Retry logic for JSON parsing AND IR validation (max 2 attempts)
-            max_retries = 2
-            data = None
-            
-            for attempt in range(max_retries):
-                try:
-                    # Step 1: Call LLM and parse JSON
-                    raw = chat(messages)
-                    data = extract_json(raw)
-                    
-                    # Handle case where LLM returns a list instead of a dict with "targets" key
-                    if isinstance(data, list):
-                        logger.warning(
-                            "WorkloadDesigner: LLM returned a list, wrapping in {'targets': [...]}"
-                        )
-                        data = {"targets": data}
-                    
-                    # Step 2: Validate IR structure
-                    board.workload_ir = WorkloadIR.model_validate(data)
-                    
-                    # Success! Exit retry loop
-                    break
-                    
-                except JSONParseError as e:
-                    if attempt < max_retries - 1:
-                        logger.warning(f"JSON parsing failed (attempt {attempt + 1}/{max_retries}), retrying...")
-                        messages.append({
-                            "role": "user",
-                            "content": "Please return ONLY valid JSON, no markdown formatting or explanations."
-                        })
-                    else:
-                        raise
-                        
-                except Exception as e:
-                    # IR validation error or other error
-                    if attempt < max_retries - 1:
-                        logger.warning(f"IR validation failed (attempt {attempt + 1}/{max_retries}): {e}")
-                        error_summary = str(e)[:200]
-                        messages.append({
-                            "role": "user",
-                            "content": f"The previous response failed validation. Error: {error_summary}. "
-                                      f"Please fix the JSON structure and ensure all required fields are present and correctly formatted."
-                        })
-                    else:
-                        logger.error(f"Validation error: {e}")
-                        if data:
-                            logger.error(f"Data that failed validation (first 2000 chars): {str(data)[:2000]}")
-                        raise
+            # Handle case where LLM returns a list instead of a dict with "targets" key
+            def wrap_list(data: dict) -> dict:
+                """Wrap list response in {'targets': [...]} dict."""
+                if isinstance(data, list):
+                    logger.warning(
+                        "WorkloadDesigner: LLM returned a list, wrapping in {'targets': [...]}"
+                    )
+                    return {"targets": data}
+                return data
+
+            # Use centralized retry utility with post-processing
+            board.workload_ir = call_llm_with_retry(
+                messages,
+                WorkloadIR,
+                post_process=wrap_list
+            )
 
             logger.info(
                 f"WorkloadDesigner: Generated WorkloadIR with "
                 f"{len(board.workload_ir.targets)} workload targets"
             )
 
-        except JSONParseError as e:
-            handle_agent_error("WorkloadDesigner", "parse JSON", e)
-            raise
         except Exception as e:
             handle_agent_error("WorkloadDesigner", "execute", e)
             raise

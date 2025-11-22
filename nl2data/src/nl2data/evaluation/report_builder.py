@@ -129,9 +129,11 @@ def evaluate(
                 )
             )
 
-        elif dist.kind in ("uniform", "normal"):
+        elif dist.kind in ("uniform", "normal", "lognormal", "pareto", "poisson", "exponential", "mixture"):
             # For numeric distributions, use KS test
             # This is simplified - in production, generate expected samples
+            # Note: mixture distributions are evaluated as numeric (component distributions are checked separately)
+            # Note: poisson and exponential are discrete/continuous numeric distributions
             ks_stat, ks_pvalue = ks_test(values)
             metrics.append(
                 MetricResult(

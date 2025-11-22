@@ -35,7 +35,10 @@ def end2end(description_file: Path, out_dir: Path):
 
     typer.echo("Running NL → IR pipeline...")
     agents = create_agent_list(nl)
-    board = Orchestrator(agents).execute(Blackboard())
+    # Generate query ID from description hash
+    import hashlib
+    query_id = hashlib.md5(nl.encode()).hexdigest()[:8]
+    board = Orchestrator(agents, query_id=query_id, query_text=nl).execute(Blackboard())
     ir = board.dataset_ir
 
     if ir is None:
@@ -71,7 +74,10 @@ def nl2ir(description_file: Path, out_ir: Path):
 
     typer.echo("Running NL → IR pipeline...")
     agents = create_agent_list(nl)
-    board = Orchestrator(agents).execute(Blackboard())
+    # Generate query ID from description hash
+    import hashlib
+    query_id = hashlib.md5(nl.encode()).hexdigest()[:8]
+    board = Orchestrator(agents, query_id=query_id, query_text=nl).execute(Blackboard())
     ir = board.dataset_ir
 
     if ir is None:

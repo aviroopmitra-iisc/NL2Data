@@ -1,21 +1,25 @@
 """Distribution samplers for data generation."""
 
 from .base import BaseSampler
-from .numeric import UniformSampler, NormalSampler
+from .numeric import UniformSampler, NormalSampler, LognormalSampler, ParetoSampler, PoissonSampler, ExponentialSampler
 from .categorical import CategoricalSampler
 from .zipf import ZipfSampler
 from .seasonal import SeasonalDateSampler
-from .derived import DerivedSampler
+from .mixture import MixtureSampler
 from .factory import get_sampler
 
 __all__ = [
     "BaseSampler",
     "UniformSampler",
     "NormalSampler",
+    "LognormalSampler",
+    "ParetoSampler",
+    "PoissonSampler",
+    "ExponentialSampler",
     "CategoricalSampler",
     "ZipfSampler",
     "SeasonalDateSampler",
-    "DerivedSampler",
+    "MixtureSampler",
     "get_sampler",
 ]
 

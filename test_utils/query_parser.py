@@ -1,24 +1,46 @@
-"""Utilities for parsing queries from text files."""
+"""Utilities for parsing queries from text or JSON files."""
 
+import json
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 
-def parse_queries(file_path: Path) -> List[Tuple[int, str]]:
+def parse_queries(file_path: Path, tier: Optional[str] = None) -> List[Tuple[int, str]]:
     """
-    Parse queries from the example queries file.
-    
-    Expected format:
-        1. First query description...
-        
-        2. Second query description...
+    Parse queries from the example queries file (supports both JSON and text formats).
     
     Args:
-        file_path: Path to the queries file
+        file_path: Path to the queries file (JSON or text)
+        tier: Optional filter by tier ("core" or "extended"). Only works with JSON format.
         
     Returns:
         List of tuples (query_number, query_text)
     """
+    # Check if file is JSON
+    if file_path.suffix.lower() == ".json":
+        return _parse_json_queries(file_path, tier)
+    else:
+        return _parse_text_queries(file_path)
+
+
+def _parse_json_queries(file_path: Path, tier: Optional[str] = None) -> List[Tuple[int, str]]:
+    """Parse queries from JSON format."""
+    data = json.loads(file_path.read_text(encoding="utf-8"))
+    
+    queries = []
+    for query in data["queries"]:
+        # Filter by tier if specified
+        if tier is not None and query["tier"] != tier:
+            continue
+        queries.append((query["number"], query["text"]))
+    
+    # Sort by number
+    queries.sort(key=lambda x: x[0])
+    return queries
+
+
+def _parse_text_queries(file_path: Path) -> List[Tuple[int, str]]:
+    """Parse queries from text format (legacy support)."""
     content = file_path.read_text(encoding="utf-8")
     queries = []
     
@@ -30,6 +52,13 @@ def parse_queries(file_path: Path) -> List[Tuple[int, str]]:
     for part in parts:
         part = part.strip()
         if not part:
+            continue
+        
+        # Skip header sections
+        if part.startswith("=" * 80) or part.startswith("NL2DATA") or \
+           part.startswith("This file") or part.startswith("ORGANIZATION") or \
+           part.startswith("CORE QUERIES") or part.startswith("EXTENDED QUERIES") or \
+           part.startswith("To test"):
             continue
             
         # Check if this line starts with a number followed by a period
@@ -54,4 +83,3 @@ def parse_queries(file_path: Path) -> List[Tuple[int, str]]:
         queries.append((current_query_num, "\n".join(current_query_text)))
     
     return queries
-
