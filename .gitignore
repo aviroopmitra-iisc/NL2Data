@@ -191,7 +191,6 @@ $RECYCLE.BIN/
 # Reports and Documentation (generated files)
 final_report/
 *.md
-!PROJECT_OVERVIEW.md
 
 # LaTeX auxiliary files
 *.aux
