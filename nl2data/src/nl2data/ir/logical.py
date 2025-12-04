@@ -2,7 +2,7 @@
 
 from typing import List, Optional, Dict, Literal
 from pydantic import BaseModel, Field
-from .constraint_ir import ConstraintSpec
+from .constraint_ir import ConstraintSpec, TableFDConstraint
 
 SQLType = Literal[
     "INT",
@@ -44,6 +44,8 @@ class TableSpec(BaseModel):
     columns: List[ColumnSpec]
     primary_key: List[str] = Field(default_factory=list)
     foreign_keys: List[ForeignKeySpec] = Field(default_factory=list)
+    candidate_keys: List[List[str]] = Field(default_factory=list)  # List of candidate key column sets
+    fds: List[TableFDConstraint] = Field(default_factory=list)  # Functional dependencies for this table
 
 
 class LogicalIR(BaseModel):

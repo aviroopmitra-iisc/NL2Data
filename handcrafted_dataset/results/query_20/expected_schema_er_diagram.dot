@@ -1,0 +1,15 @@
+// ER Diagram
+digraph {
+	rankdir=TB
+	node [shape=plaintext style="rounded,filled"]
+	graph [nodesep=1.0 ranksep=1.5 splines=polyline]
+	edge [arrowsize=0.8]
+	employee [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">employee</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>employee_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">department_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">manager_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	department [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">department</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>department_id</B></TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	position_history [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">position_history</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>employee_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT"><B>effective_from</B></TD><TD ALIGN="LEFT">DATE</TD></TR><TR><TD ALIGN="LEFT">position_title</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">effective_to</TD><TD ALIGN="LEFT">DATE</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	compensation_history [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">compensation_history</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>employee_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT"><B>effective_from</B></TD><TD ALIGN="LEFT">DATE</TD></TR><TR><TD ALIGN="LEFT">base_salary</TD><TD ALIGN="LEFT">FLOAT</TD></TR><TR><TD ALIGN="LEFT">bonus_target</TD><TD ALIGN="LEFT">FLOAT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	employee -> department [label=department_id arrowhead=crow color=black style=dashed]
+	employee -> employee [label=manager_id arrowhead=crow color=black style=dashed]
+	position_history -> employee [label=employee_id arrowhead=crow color=black style=dashed]
+	compensation_history -> employee [label=employee_id arrowhead=crow color=black style=dashed]
+}

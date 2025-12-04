@@ -4,323 +4,49 @@
 
 ---
 
-## ⚠️ CRITICAL: Prompt Inconsistencies Found
+## 🗺️ Current Status
 
-**Status**: **URGENT FIX NEEDED** - Prompts incorrectly tell LLMs to avoid features that are actually supported.
+### ✅ Completed Features
 
-**Key Issues**:
-1. **DSL Function Mismatch**: Prompts say `str()`, `int()`, `float()`, `bool()`, `normal()`, `lognormal()`, `pareto()` are FORBIDDEN, but code actually allows them
-2. **Seasonal Granularity**: Prompt says `"month" | "week"` but code supports `"hour"` too
-3. **Window Functions**: Confusing guidance about `lag()`/`lead()` - forbidden in derived expressions but allowed in window specs
-4. **Domain Bias**: 761-line prompt heavily focused on fraud/finance, may cause over-eager fraud column creation in other domains
-
-**Impact**: LLMs are avoiding valid DSL functions, leading to suboptimal derived expressions and missing features.
-
-**Fix Priority**: **HIGH** - See Task 1 below.
-
----
-
-## 🗺️ Roadmap: You Are Here
-
-### ✅ Before Next Test Run Checklist
-
-- [x] LognormalSampler & ParetoSampler implemented + unit tests green ✅ DONE
-- [x] MixtureSampler implemented + unit tests green ✅ DONE
-- [ ] Prompts updated & spot-checked on 2–3 NL descriptions (see Task 3 below)
-- [x] Nuance coverage checker extended & reporting in test_report ✅ DONE (basic implementation exists)
-- [ ] Integration tests: re-run NL-3 (fraud) and NL-1 (clickstream) to verify new features appear in IR
-
----
-
-### ✅ **Done** (Implemented)
-- ✅ DSL extensions: `in`/`not in`, casts (`int`, `float`, `bool`, `str`), `normal`/`lognormal`/`pareto` functions
-- ✅ `case_when` macro and `between` helper
+All major features have been implemented:
+- ✅ DSL extensions: `in`/`not in`, casts, `normal`/`lognormal`/`pareto` functions, `case_when`, `between`, helpers
 - ✅ Window functions (`DistWindow`, `window_eval.py`, Phase 3 in generator)
 - ✅ Event/Incident system (`EventSpec`, `EventEffect`, `event_eval.py`, Phase 1.5)
-- ✅ Basic nuance coverage checker (`check_nuance_coverage()`)
+- ✅ Nuance coverage checker (`check_nuance_coverage()`)
 - ✅ Agent repair loop system (integrated in Orchestrator)
 - ✅ Quality metrics tracking (integrated in Orchestrator)
-- ✅ Constraint enforcement (integrated in fact generator)
-- ✅ **LognormalSampler & ParetoSampler** (implemented in `generation/distributions/numeric.py`)
-- ✅ **MixtureSampler** (implemented in `generation/distributions/mixture.py`)
-- ✅ **All IR models** (DistLognormal, DistPareto, DistMixture in `ir/generation.py`)
+- ✅ Constraint enforcement (integrated in fact generator as Phase 1.7)
+- ✅ All distributions: Lognormal, Pareto, Mixture, Poisson, Exponential (IR models, samplers, factory)
+- ✅ Prompt fixes (inconsistencies fixed, lag/lead clarified, domain bias reduced)
 
-### 🎯 **Now** (High Impact, Low-Medium Risk)
-1. ~~**LognormalSampler & ParetoSampler**~~ ✅ **DONE** - Already implemented
-2. ~~**Mixture distribution**~~ ✅ **DONE** - Already implemented
-3. **Fix prompt inconsistencies** (HIGH impact, LOW effort, LOW risk) - **CRITICAL**: Prompts don't match actual DSL capabilities
-4. **Add Poisson & Exponential distributions** (HIGH impact, LOW effort, LOW risk) - Critical for count and time-based patterns
-5. **Enhance nuance coverage** with more patterns (MEDIUM impact, MEDIUM effort, LOW risk) - Partially done, can be expanded
+### 🎯 Pending Tasks
 
-### 📋 **Later** (Nice-to-have)
-- Additional distributions: Gamma, Beta, Binomial, Truncated Normal (MEDIUM impact, LOW effort each)
-- Conditional/correlated distributions (MEDIUM impact, HIGH effort)
-- State machine constraints (MEDIUM impact, MEDIUM effort)
-- `within_days_of()` helper (MEDIUM impact, LOW effort)
-- WorkloadIR integration (MEDIUM impact, MEDIUM effort)
+1. **🔥 Multi-Table Relational Evaluation Framework** - **HIGH PRIORITY - IMPLEMENTING SOON**
+   - Comprehensive evaluation system for benchmarking synthetic DBs against real DBs
+   - Handles schema mismatches, multi-table relationships, and utility scoring
+   - See detailed design in "Multi-Table Relational Evaluation Framework" section below
+   
+2. **Integration Testing** - Test with 2-3 queries to verify LLMs use functions correctly
+3. **Optional Enhancements** - See below
 
 ---
 
-## 📊 Quick Status Table
+## 📋 Future Enhancement Tasks
 
-| Feature | Status | Impact | Risk | Effort | Priority |
-|---------|--------|--------|------|--------|----------|
-| DSL: `in`/casts/distributions | ✅ Done | HIGH | - | - | - |
-| Window functions | ✅ Done | HIGH | - | - | - |
-| Event/Incident system | ✅ Done | HIGH | - | - | - |
-| Nuance coverage (basic) | ✅ Done | MEDIUM | - | - | - |
-| Lognormal/Pareto samplers | ✅ Done | HIGH | - | - | - |
-| Mixture distribution | ✅ Done | HIGH | - | - | - |
-| **Fix prompt inconsistencies** | 🎯 Now | **HIGH** | **LOW** | **LOW** | **1** |
-| **Poisson & Exponential distributions** | 🎯 Now | **HIGH** | **LOW** | **LOW** | **2** |
-| Nuance coverage (enhanced) | 🎯 Now | MEDIUM | LOW | MEDIUM | **3** |
-| Conditional distributions | 📋 Later | MEDIUM | MEDIUM | HIGH | 5 |
-| State machines | 📋 Later | MEDIUM | MEDIUM | MEDIUM | 6 |
-| `within_days_of()` helper | 📋 Later | MEDIUM | LOW | LOW | 7 |
-| WorkloadIR integration | 📋 Later | MEDIUM | LOW | MEDIUM | 8 |
+### Task 1: Integration Testing
 
----
-
-## 🎯 Remaining High-Impact Tasks
-
-### Task 1: Fix Prompt Inconsistencies (CRITICAL)
-
-**Goal**: Fix mismatches between what prompts say is allowed/forbidden vs what the code actually supports.
+**Goal**: Verify that LLMs correctly use all implemented features in practice.
 
 **Impact**: HIGH | **Risk**: LOW | **Effort**: LOW
 
-**Problem**: The `dist_system.txt` prompt incorrectly tells LLMs NOT to use features that are actually supported, causing them to avoid valid DSL functions.
-
-**Critical Issues Found**:
-
-1. **DSL Function Allowlist Mismatch**:
-   - **Prompt says FORBIDDEN**: `str()`, `int()`, `float()`, `bool()`, `normal()`, `lognormal()`, `pareto()`
-   - **Code actually allows**: All of these are in `ALLOWED_FUNCS` in `derived_program.py`
-   - **Impact**: LLMs avoid using valid functions, leading to suboptimal derived expressions
-
-2. **Seasonal Granularity Missing**:
-   - **Prompt says**: `granularity: "month" | "week"`
-   - **Code supports**: `"month" | "week" | "hour"`
-   - **Impact**: LLMs can't specify hourly seasonality even though it's supported
-
-3. **Window Functions Confusion**:
-   - **Prompt says**: "You CANNOT use window functions like LAG() or LEAD()"
-   - **Reality**: `lag()` and `lead()` ARE supported in `DistWindow` expressions (e.g., `expression: "lag(amount, 1)"`)
-   - **Impact**: LLMs think lag/lead are forbidden when they're actually valid in window specs
-
-4. **Prompt Length/Domain Bias**:
-   - `dist_system.txt` is 761 lines, heavily focused on fraud/finance patterns
-   - Risk: LLMs may over-eagerly create fraud-related columns even in non-finance domains
-   - **Impact**: Schema bloat and domain mismatches
-
-5. **Missing Distribution Usage Guidance**:
-   - **Zipf**: No "Use for" or "When NL mentions" guidance - only has parameters
-   - **Categorical**: No "Use for" guidance - only has examples
-   - **No Quick Reference**: Missing decision tree or quick selection guide for choosing distributions
-   - **Impact**: LLMs may not know when to use Zipf vs other distributions, or when categorical is appropriate
-
-**Files to Update**:
-- `prompts/roles/dist_system.txt` - Fix ALLOWED/FORBIDDEN functions list, add "hour" to seasonal, clarify window functions
-- `prompts/roles/dist_user.txt` - Clarify lag/lead distinction
-
 **Steps**:
-1. Update "ALLOWED FUNCTIONS" section in `dist_system.txt` to match `ALLOWED_FUNCS` from `derived_program.py`:
-   - Add: `int()`, `float()`, `bool()`, `str()`, `normal()`, `lognormal()`, `pareto()`, `concat()`, `format()`, `substring()`, `case_when()`, `between()`, `geo_distance()`, `ts_diff()`, `overlap_days()`
-   - Remove from FORBIDDEN list: All the above functions
-   - Clarify: Distribution *kinds* (e.g., `{"kind": "lognormal"}`) vs distribution *functions* (e.g., `lognormal(mean, sigma)` in DSL) are different things
-
-2. Fix seasonal granularity:
-   - Change: `granularity: "month" | "week"` → `granularity: "month" | "week" | "hour"`
-
-3. Clarify window functions:
-   - Add section: "Window Functions vs Derived Expressions"
-   - Explain: `lag()`/`lead()` are FORBIDDEN in derived expressions, but ALLOWED in window distribution expressions
-   - Example: `{"kind": "window", "expression": "lag(amount, 1)", ...}` is valid
-
-4. Reorganize `dist_system.txt`:
-   - Split into: Core section (distributions, DSL, providers) + Domain Patterns section (fraud, pay-day, velocity)
-   - Make domain-specific sections explicitly conditional: "IF NL mentions fraud/credit-cards, THEN apply these rules..."
-
-5. Add missing distribution usage guidance:
-   - **Zipf**: Add "Use for" and "When NL mentions" sections:
-     ```
-     6. Zipf: {"kind": "zipf", "s": NUMBER, "n": INTEGER | null}
-        - Use for discrete popularity distributions (e.g., product popularity, user activity, page views, SKU sales)
-        - s = exponent (typically 1.2-2.0), n = domain size
-        - Example: {"kind": "zipf", "s": 1.2, "n": 1000}
-        - When NL mentions: "Zipf", "popularity", "power-law", "skewed", "80/20", "top products", "most popular"
-     ```
-   - **Categorical**: Add "Use for" guidance:
-     ```
-     8. Categorical: {"kind": "categorical", "domain": {...}}
-        - Use for discrete values with known options (e.g., status codes, categories, boolean flags, enums, types)
-        - values MUST be an array of STRINGS (convert booleans/numbers to strings)
-        - When NL mentions: "categories", "status", "types", "enums", "discrete values", "options"
-        - Example: {"kind": "categorical", "domain": {"values": ["true", "false"], "probs": [0.3, 0.7]}}
-     ```
-
-6. Add Quick Distribution Selection Guide:
-   - Add a new section at the top of distribution types:
-     ```
-     ## Quick Distribution Selection Guide
-     
-     Choose a distribution based on your data pattern:
-     - **Numeric, no pattern/range**: Uniform
-     - **Numeric, symmetric bell curve**: Normal
-     - **Numeric, right-skewed/heavy tail**: Lognormal or Pareto
-     - **Numeric, multi-modal (multiple peaks)**: Mixture
-     - **Discrete popularity/skew (power-law)**: Zipf
-     - **Date/time with seasonal patterns**: Seasonal
-     - **Discrete known values (categories, status)**: Categorical
-     - **Computed from other columns**: Derived
-     - **Rolling aggregations (sum, mean, count over windows)**: Window
-     ```
-
-**Sanity Checklist**:
-- [ ] ALLOWED_FUNCS list in prompt matches `derived_program.py` exactly
-- [ ] Seasonal granularity includes "hour"
-- [ ] Window function section clarifies lag/lead distinction
-- [ ] Domain-specific patterns are clearly marked as conditional
-- [ ] Zipf distribution has "Use for" and "When NL mentions" guidance
-- [ ] Categorical distribution has "Use for" guidance
-- [ ] Quick Distribution Selection Guide added at top of distribution types section
-- [ ] Test with 2-3 queries to verify LLMs use previously-forbidden functions correctly
+1. Re-run NL-3 (fraud) and NL-1 (clickstream) queries
+2. Verify new features appear in generated IRs
+3. Check that LLMs use previously-forbidden functions correctly
 
 ---
 
-### Task 2: Add Poisson & Exponential Distributions
-
-**Goal**: Add support for count distributions (Poisson) and inter-arrival time distributions (Exponential).
-
-**Impact**: HIGH | **Risk**: LOW | **Effort**: LOW (~1-2 hours)
-
-**Problem**: Current distributions lack support for:
-- **Count patterns**: Session lengths, event counts, arrivals (Poisson)
-- **Time intervals**: Inter-arrival times, waiting times, lifetimes (Exponential)
-
-**Use Cases from Queries**:
-- Query #1: "Session lengths must follow a heavy-tailed distribution" → Poisson + Pareto mixture
-- Query #2: "random missing intervals" → Exponential for inter-arrival times
-- Query #8: "Time gaps between sessions" → Exponential
-- Query #10: "widely varying time lags" → Exponential or Gamma
-
-**Implementation Steps**:
-
-1. **Add IR Models** (`ir/generation.py`):
-   ```python
-   class DistPoisson(BaseModel):
-       """Poisson distribution specification."""
-       kind: Literal["poisson"] = "poisson"
-       lam: float  # Lambda parameter (rate, must be > 0)
-       
-       @field_validator("lam")
-       @classmethod
-       def validate_lam(cls, v: float) -> float:
-           if v <= 0:
-               raise ValueError("lam must be positive")
-           return v
-   
-   class DistExponential(BaseModel):
-       """Exponential distribution specification."""
-       kind: Literal["exponential"] = "exponential"
-       scale: float = 1.0  # Scale parameter (1/lambda, must be > 0)
-       
-       @field_validator("scale")
-       @classmethod
-       def validate_scale(cls, v: float) -> float:
-           if v <= 0:
-               raise ValueError("scale must be positive")
-           return v
-   ```
-   - Add to `Distribution` union (after `DistPareto`)
-
-2. **Add Samplers** (`generation/distributions/numeric.py`):
-   ```python
-   class PoissonSampler(BaseSampler):
-       """Poisson distribution sampler."""
-       
-       def __init__(self, lam: float):
-           if lam <= 0:
-               raise ValueError("lam must be positive")
-           self.lam = lam
-           logger.debug(f"Initialized PoissonSampler: λ={lam}")
-       
-       def sample(self, n: int, **kwargs) -> np.ndarray:
-           rng = kwargs.get("rng", np.random.default_rng())
-           return rng.poisson(self.lam, size=n)
-   
-   class ExponentialSampler(BaseSampler):
-       """Exponential distribution sampler."""
-       
-       def __init__(self, scale: float):
-           if scale <= 0:
-               raise ValueError("scale must be positive")
-           self.scale = scale
-           logger.debug(f"Initialized ExponentialSampler: scale={scale}")
-       
-       def sample(self, n: int, **kwargs) -> np.ndarray:
-           rng = kwargs.get("rng", np.random.default_rng())
-           return rng.exponential(self.scale, size=n)
-   ```
-
-3. **Update Factory** (`generation/distributions/factory.py`):
-   - Add imports: `DistPoisson`, `DistExponential`, `PoissonSampler`, `ExponentialSampler`
-   - Add factory cases:
-   ```python
-   if isinstance(dist, DistPoisson):
-       return PoissonSampler(dist.lam)
-   
-   if isinstance(dist, DistExponential):
-       return ExponentialSampler(dist.scale)
-   ```
-
-4. **Update Prompts** (`prompts/roles/dist_system.txt`):
-   - Add to distribution types list:
-   ```
-   8. Poisson: {"kind": "poisson", "lam": NUMBER}
-      - Use for count distributions (session lengths, event counts, arrivals)
-      - lam: Rate parameter (must be > 0, typically 1-20)
-      - Example: {"kind": "poisson", "lam": 5.0}
-      - When NL mentions: "Poisson", "count distribution", "session lengths", "event counts", "arrivals"
-   
-   9. Exponential: {"kind": "exponential", "scale": NUMBER}
-      - Use for inter-arrival times, waiting times, lifetimes
-      - scale: Scale parameter (1/lambda, must be > 0, default: 1.0)
-      - Example: {"kind": "exponential", "scale": 2.5}
-      - When NL mentions: "exponential", "inter-arrival", "waiting time", "time between events"
-   ```
-   - Update kind union: `"uniform" | "normal" | "lognormal" | "pareto" | "poisson" | "exponential" | "mixture" | ...`
-
-5. **Add Unit Tests** (`tests/test_derived_dsl.py` or new file):
-   - Test Poisson sampler with various lambda values
-   - Test Exponential sampler with various scale values
-   - Test edge cases (very small/large parameters)
-
-**Files to Update**:
-- `ir/generation.py` - Add `DistPoisson`, `DistExponential` models
-- `generation/distributions/numeric.py` - Add `PoissonSampler`, `ExponentialSampler`
-- `generation/distributions/factory.py` - Add factory cases
-- `generation/distributions/__init__.py` - Export new samplers
-- `prompts/roles/dist_system.txt` - Add distribution documentation
-- `tests/` - Add unit tests
-
-**Sanity Checklist**:
-- [ ] IR models compile and validate
-- [ ] Samplers generate correct distributions
-- [ ] Factory returns correct samplers
-- [ ] Prompts mention Poisson and Exponential
-- [ ] Unit tests pass
-- [ ] Integration test with Query #1 or #2
-
-**Future Enhancements** (Medium Priority):
-- **Gamma distribution**: More flexible than Exponential (shape + scale parameters)
-- **Beta distribution**: For proportions, probabilities, bounded values (0-1)
-- **Binomial distribution**: For success/failure counts
-- **Truncated Normal**: Normal distribution with bounds
-
----
-
-### Task 3: Enhance Nuance Coverage (Optional Enhancement)
+### Task 2: Enhance Nuance Coverage (Optional)
 
 **Goal**: Expand nuance coverage checker to catch more missing patterns.
 
@@ -332,17 +58,14 @@
 - Add more keyword patterns (e.g., "readmission", "proration", "within_days_of")
 - Improve semantic understanding (e.g., "pay day" → check for day_of_month logic)
 - Integrate into repair loop (automatically fix missing nuances)
-
-**Note**: This is already well-implemented. The current `check_nuance_coverage()` function in `validators.py` has comprehensive keyword detection and IR construct checking. Optional enhancements could include:
 - More semantic understanding (beyond keyword matching)
 - Automatic repair suggestions
-- Integration with repair loop
+
+**Note**: This is already well-implemented. Optional enhancements could improve coverage further.
 
 ---
 
-## 📋 Later Tasks (Lower Priority)
-
-### Task 4: Add Additional Distributions (Gamma, Beta, Binomial, Truncated Normal)
+### Task 3: Add Additional Distributions (Gamma, Beta, Binomial, Truncated Normal)
 
 **Goal**: Expand distribution coverage for specialized use cases.
 
@@ -370,19 +93,19 @@
    - Parameters: `mean`, `std`, `low`, `high`
    - Implementation: Sample from normal, clip to bounds, resample if out of bounds
 
-**Implementation**: Follow same pattern as Task 2 (Poisson/Exponential)
+**Implementation**: Follow same pattern as Poisson/Exponential (see Implementation Patterns below)
 
-**Priority**: Can be done after Poisson/Exponential if needed for specific queries
+**Priority**: Can be done if needed for specific queries
 
 ---
 
-### Task 5: Add Conditional/Correlated Distributions
+### Task 4: Add Conditional/Correlated Distributions
 
 **Goal**: Enable region-specific categories, fraud rings, correlated metrics.
 
 **Impact**: MEDIUM | **Risk**: MEDIUM | **Effort**: HIGH
 
-**Note**: Likely deferred until after v1.0 - complex implementation, lower immediate impact than Tasks 1-4.
+**Note**: Likely deferred until after v1.0 - complex implementation, lower immediate impact.
 
 **Files**:
 - `ir/generation.py` - Add `DistConditionalCategorical`, `DistCorrelatedNormal`
@@ -403,7 +126,7 @@
 
 ---
 
-### Task 6: Add State Machine Constraints
+### Task 5: Add State Machine Constraints
 
 **Goal**: Enforce realistic order status flows, session state transitions.
 
@@ -425,7 +148,7 @@
 
 ---
 
-### Task 7: Add `within_days_of()` Helper Function
+### Task 6: Add `within_days_of()` Helper Function
 
 **Goal**: Enable "within 30 days of upgrade" type logic.
 
@@ -446,7 +169,7 @@
 
 ---
 
-### Task 8: Integrate WorkloadIR into Distribution Engineering
+### Task 7: Integrate WorkloadIR into Distribution Engineering
 
 **Goal**: Ensure generated data matches query workload patterns.
 
@@ -467,44 +190,950 @@
 
 ---
 
-## 📚 Reference: Feature Specifications
+## 📊 Multi-Table Relational Evaluation Framework
 
-### DSL Extensions (✅ Done)
-
-**Operators**: `in`, `not in` (membership testing)
-**Casts**: `int()`, `float()`, `bool()`, `str()`
-**Distributions**: `normal()`, `lognormal()`, `pareto()` (DSL functions)
-**Conditionals**: `case_when(cond1, val1, cond2, val2, ..., default)`
-**Helpers**: `between(x, a, b)`, `geo_distance()`, `ts_diff()`, `overlap_days()`
-
-**Files**: `derived_program.py`, `derived_eval.py`
+> **🔥 PRIORITY IMPLEMENTATION TASK** - This comprehensive evaluation framework is the next major feature to implement. It provides end-to-end benchmarking of synthetic multi-table relational databases against real databases, handling schema mismatches and providing interpretable scores.
 
 ---
 
-### Window Functions (✅ Done)
+### 0. Big Picture
 
-**IR Model**: `DistWindow` with `expression`, `partition_by`, `order_by`, `frame`
-**Evaluation**: `window_eval.py` with `compute_window_columns()`
-**Integration**: Phase 3 in `fact_generator.py` (after derived columns)
+**Goal**: Benchmark the pipeline `NL description → generator → synthetic DB (1+ tables)` against a real DB, where:
+- Table names may differ
+- Column names/types may differ
+- Number of tables may differ
 
-**Supported**: `rolling_mean`, `rolling_sum`, `rolling_count`, `rolling_std`, `lag`, `lead`
+**Requirements**:
+- Reusable, seeded tests
+- Scores in [0,1]
+- Several high-level scores rather than dozens of raw metrics
+
+**Three Evaluation Axes** (extended to multi-table):
+1. **Schema / Marginal Quality** – per table & per column
+2. **Structural Quality** – intra-table + inter-table relationships
+3. **Utility** – can synthetic DB substitute real DB for tasks/queries?
+
+**Schema Mismatch Handling**: Via a matching layer (tables + columns) inspired by schema-matching research/tools like Valentine.
+
+**Integration**: Can leverage SDMetrics/SDV's **Multi-Table Quality Report** for connected tables (column shapes, column pair trends, and inter-table trends).
 
 ---
 
-### Event/Incident System (✅ Done)
+### 1. Core Scores (Single-Table → Multi-Table Generalization)
 
-**IR Model**: `EventSpec` with `name`, `scope`, `interval`, `effects`
-**Effects**: `multiply_distribution`, `add_offset`, `set_value`
-**Evaluation**: `event_eval.py` with `apply_events_to_chunk()`
-**Integration**: Phase 1.5 in `fact_generator.py` (after base columns, before derived)
+For a full relational DB, define:
+
+- **S_schema** ∈ [0,1]: Schema & Marginals
+- **S_structure,intra** ∈ [0,1]: Within-table structure
+- **S_structure,inter** ∈ [0,1]: Between-table structure (relations, FKs)
+- **S_utility** ∈ [0,1]: Downstream / query utility
+
+**Optional Global Score**:
+
+```
+S_global = w₁·S_schema + w₂·S_structure,intra + w₃·S_structure,inter + w₄·S_utility
+          (wᵢ ≥ 0, Σwᵢ = 1)
+```
+
+**Note**: No privacy score, since real rows are never seen at generation time.
 
 ---
 
-### Constraint Enforcement (✅ Done)
+### 2. Multi-Table Schema Matching and Alignment
 
-**Types**: Functional dependencies, implications, nullability
-**Enforcement**: `enforce.py` with `enforce_batch()`
-**Integration**: Phase 1.7 in `fact_generator.py` (after dimension joins)
+Before scoring, align **real DB** and **synthetic DB**:
+- Real: tables T₁ᴿ, ..., Tₘᴿ
+- Synthetic: T₁ˢ, ..., Tₙˢ
+
+**Required Mappings**:
+- Table mapping: Π_T: Tᴿ → Tˢ ∪ {∅}
+- Column mapping per table: Π_C^(k): cols(Tₖᴿ) → cols(Tˢ_Π_T(k)) ∪ {∅}
+
+This is classic schema matching. Valentine and similar frameworks combine name similarity, datatype, and instance distributions to match attributes.
+
+#### 2.1 Table-Level Matching
+
+For each real table vs synthetic table:
+
+**Signals**:
+- Name similarity (tokenized names, edit distance, Jaccard over tokens)
+- Row count scale (order of magnitude)
+- Key cardinality patterns (does it have a primary key-like column?)
+- Foreign key pattern: if a table in real references users, and a synthetic table references some "user"-like table, that's a hint they correspond
+
+**Process**:
+1. Score a similarity for each (real, synthetic) table pair
+2. Solve a bipartite matching that maximizes total similarity (Hungarian / maximum weight matching style)
+3. Drop pairs below a threshold (e.g. similarity < 0.6 → treat as unmatched)
+
+**Result**:
+- Matched tables (M_T)
+- Real-only tables (T_miss)
+- Synthetic-only tables (T_extra)
+
+#### 2.2 Column-Level Matching Per Table
+
+For each matched table pair:
+
+**Signals** (similar to schema-matching literature):
+- Name similarity
+- Type compatibility (numeric vs cat vs datetime)
+- Distribution similarity (range, cardinality, example values)
+- Optional: semantic similarity using NL descriptions
+
+**Result**:
+- Matched columns (M_C^(k))
+- Missing columns in that table (C_miss^(k))
+- Extra synthetic columns (C_extra^(k))
+
+#### 2.3 Impact of Unmatched Tables/Columns
+
+**Penalize** missing and extra schema elements:
+
+**Table Coverage Factor**:
+```
+C_T = |M_T| / m_T
+```
+where m_T = # real tables, |M_T| = matched tables
+
+**Column Coverage Per Table**:
+```
+C_k = |M_C^(k)| / m_k
+```
+where m_k = # real columns in table k, |M_C^(k)| = matched columns
+
+**Usage**: These factors are used as multiplicative penalties after computing per-table quality scores.
+
+**Extra Tables/Columns**: Can get an additional simplicity penalty if needed (e.g. exponential in count of extras), but table/column coverage alone is usually enough.
+
+---
+
+### 3. Schema & Marginal Score (S_schema)
+
+#### 3.1 What to Check (Multi-Table)
+
+Per matched table, for each matched column:
+
+**Numeric**:
+- Distribution shape (histogram / CDF)
+- Range, moments
+- Missingness rate
+
+**Categorical**:
+- Frequency distribution
+- Rare vs common categories
+- Missingness
+
+Essentially, the same as single-table column-shape metrics, done **per table** and then aggregated.
+
+#### 3.2 How to Aggregate
+
+**Process**:
+1. For each matched table pair, build "aligned" real vs synthetic sub-tables containing only matched columns
+2. Run a **single-table Quality Report** on each pair to get that table's column-shape score (S̃_schema^(k) ∈ [0,1])
+3. Weight tables by something sensible (e.g. row count, or 1 per table)
+
+**Table-Level Aggregation** (before penalties):
+```
+S_schema,aligned = (1/|M_T|) · Σ_{k ∈ M_T} S̃_schema^(k)
+```
+
+**Coverage Factor**:
+```
+C_schema = C_T · (1/|M_T| · Σ_{k ∈ M_T} C_k)
+```
+
+**Final Score**:
+```
+S_schema = S_schema,aligned · C_schema
+```
+
+**Interpretation**: If you nail shapes on all matched columns but only cover 50% of the real schema, you're capped at ≈0.5.
+
+---
+
+### 4. Structural Scores (S_structure,intra) and (S_structure,inter)
+
+Relational data has **two levels of structure**:
+1. Within tables (correlations, functional dependencies, etc.)
+2. Across tables (foreign keys, referential integrity, cross-table patterns)
+
+#### 4.1 Intra-Table Structure (S_structure,intra)
+
+This is the multi-table generalization of "column pair trends":
+
+**Process**:
+- For each matched table pair:
+  - Take the aligned columns
+  - Compare pairwise relationships (correlations, contingency tables) between real and synthetic
+- SDV/SDMetrics "Column Pair Trends" and related metrics already do this per table
+
+**Aggregation**:
+- Per table pair score: S̃_structure,intra^(k) ∈ [0,1]
+- Aggregated:
+  ```
+  S_structure,intra,aligned = (1/|M_T|) · Σ_{k ∈ M_T} S̃_structure,intra^(k)
+  ```
+- Apply same coverage factor:
+  ```
+  S_structure,intra = S_structure,intra,aligned · C_schema
+  ```
+
+#### 4.2 Inter-Table Structure (S_structure,inter)
+
+This is what really matters for relational DBs:
+
+**Metrics**:
+
+1. **Foreign Key Validity / Referential Integrity**:
+   - For each relationship (real PK–FK pair), check fraction of synthetic FK values that exist in the corresponding PK table
+   - Relational data quality literature treats referential integrity as a central quantitative quality dimension
+
+2. **Relationship Cardinalities**:
+   - 1-to-N distributions: how many children per parent? Are these distributions similar between real and synthetic (e.g. number of orders per customer, number of visits per patient)?
+   - N-to-N via bridge tables (e.g. users-roles): distribution of degree on both sides
+
+3. **Inter-Table Trends**:
+   - Metrics like SDMetrics' proposed **InterTableTrends** look at relationships defined in metadata, join tables on PK/FK and treat joined pairs as columns to compare trends in denormalized space
+   - Example: join orders with customers, check that relationships between customer_age and order_amount are preserved in synthetic join
+
+**Scoring**:
+
+For each real relationship (table A, table B, FK), compute:
+- **r_RI**: referential integrity score in [0,1]
+- **r_card**: similarity of child-per-parent count distribution
+- **r_trend**: similarity of cross-table trends when joined (can reuse column-pair style metrics on the joined table)
+
+**Relationship-Level Score**:
+```
+r_rel = α·r_RI + β·r_card + γ·r_trend  (α+β+γ=1)
+```
+
+**Average Over All Relationships**:
+```
+S_structure,inter = (1/|R|) · Σ_{relationships} r_rel
+```
+
+**Note**: "Missing relationships" (tables or keys that don't exist in synthetic schema) contribute 0 to the average.
+
+Multi-table SDV/SDMetrics already bake some of this into their multi-table metrics and reports (e.g. multi-table quality report and upcoming InterTableTrends property).
+
+---
+
+### 5. Utility Score (S_utility) in a Relational Setting
+
+Utility isn't just "train one classifier." For relational DBs you want:
+- **Local tasks**: predictions using a single table
+- **Relational tasks**: tasks that need joins
+- **Workload / query behavior**: can synthetic DB answer representative analytical queries similarly to real DB?
+
+You don't need all of these from day one, but they are good axes.
+
+#### 5.1 Per-Table ML Tasks (Local Utility)
+
+For tables with a known target (e.g. OpenML tasks; or if you define your own):
+
+**Protocol**:
+1. Work on aligned columns + target
+2. **Real baseline**: Train model on real table, test on real held-out rows → M_real
+3. **Synthetic**: Train on synthetic table, test on real held-out rows → M_syn
+4. **Normalize**: u = max(0, min(1, M_syn/(M_real+ε)))
+
+**Aggregate**: Per-table utilities (e.g. mean across all tables with targets) → S_utility,local
+
+#### 5.2 Relational ML Tasks
+
+Define tasks that **require joins**, e.g.:
+- Predict customer churn from customers + transactions
+- Predict fraud from users + devices + sessions
+
+**Protocol**:
+- Use a fixed join recipe (from real schema)
+- **For real data**: Build a training dataset via joins, train model, evaluate → M_real,rel
+- **Synthetic**: Join synthetic tables the same way, train model, test on **real** joined rows → M_syn,rel
+- **Normalize** as before → relational utility score S_utility,rel
+
+#### 5.3 Query-Level Utility
+
+Inspired by relational synthetic data benchmarking work:
+
+**Process**:
+- A representative query workload (counts, aggregates, group-bys, join queries)
+- For each query q:
+  - Run on real DB → answer a_R
+  - Run on synthetic DB → answer a_S
+  - Compute error (e.g. relative error on aggregates)
+- Convert into similarity score per query: s_q = 1 - normalized_error, clip to [0,1]
+- Average across queries → S_utility,queries
+
+Recent work on benchmarking synthetic relational data emphasizes this kind of combined fidelity/utility evaluation at the query level.
+
+#### 5.4 Aggregate Utility
+
+**Options**:
+- Just pick one main utility dimension (e.g. relational ML tasks) and call that S_utility, or
+- Combine:
+  ```
+  S_utility = λ·S_utility,local + (1-λ)·S_utility,rel
+  ```
+  optionally blending in query-level utility
+
+---
+
+### 6. Handling Serious Schema Differences Cleanly
+
+#### 6.1 Table Names and Structures Don't Match
+
+**If matching layer cannot find a plausible match** between a real table and any synthetic one (low similarity, missing key patterns, etc.):
+- That table is considered **missing** from synthetic DB for scoring
+- All metrics that would depend on that table (schema, structure, utility) get a 0 contribution from that table
+
+**Conversely**: Synthetic tables with no real counterpart are ignored for quality but can incur a small penalty if you want to discourage hallucinated tables.
+
+This is analogous to what schema-matching frameworks do when they fail to match attributes; unmapped attributes simply count against recall/precision.
+
+#### 6.2 Column Names & Roles Differ
+
+**For columns**:
+- If matching algorithm gives a confident map (e.g. "customer_id" ↔ "cust_id" with high similarity), treat them as the same variable
+- If confidence is low, either:
+  - Drop the match and treat that real column as missing, or
+  - Flag it and optionally require human inspection for the benchmark (you can keep a human-in-the-loop for tricky cases, just as Valentine suggests human involvement for hard matching scenarios)
+
+**Coverage penalties** will then reflect how much schema your generator actually recovered from the description.
+
+---
+
+### 7. Final Shape of the Framework
+
+**Per dataset / DB** (multi-table):
+
+1. **Real DB → NL description → Synthetic DB** (your pipeline)
+
+2. **Schema matching layer**:
+   - Match tables (real ↔ synthetic)
+   - For each matched table, match columns
+   - Identify missing and extra tables/columns
+
+3. **Schema & marginals**:
+   - For each matched table pair, evaluate column shapes using SDV/SDMetrics-style metrics
+   - Aggregate across tables; apply coverage penalties → S_schema ∈ [0,1]
+
+4. **Structure**:
+   - **Intra-table**: Evaluate column pair trends per table; aggregate with coverage → S_structure,intra
+   - **Inter-table**: Evaluate referential integrity, relationship cardinalities, and inter-table trends for each real FK; average → S_structure,inter
+
+5. **Utility**:
+   - Define a set of per-table and relational tasks, plus optional query workload
+   - Compute utility ratios (synthetic-trained vs real-trained models, synthetic vs real query answers)
+   - Aggregate → S_utility
+
+6. **Global score (optional)**:
+   - Combine into S_global with chosen weights
+
+7. **Repeat across many real DBs**:
+   - Analyze distributions of scores vs schema size, #tables, mix of types, etc.
+
+**Everything stays in [0,1]**, and you end up with:
+- A **schema-aware** notion of success (did the generator even reconstruct the right tables/columns?)
+- Clear separation between:
+  - "Did it get column distributions right?"
+  - "Did it get correlations and relationships right?"
+  - "Is it actually useful for downstream work?"
+
+**Implementation**: Can be implemented in Python with SDV/SDMetrics + a schema-matcher (could even wrap Valentine or similar ideas if you want to go full research-grade).
+
+---
+
+## 🛠️ Implementation Guide
+
+### Feasibility Assessment
+
+**✅ HIGHLY FEASIBLE** - The codebase already has strong evaluation infrastructure that can be extended:
+
+**Existing Infrastructure**:
+- ✅ `evaluation/schema_eval.py` - Schema coverage metrics (exact name matching)
+- ✅ `evaluation/table_eval.py` - Marginal distributions (KS test, Wasserstein), correlations, mutual information
+- ✅ `evaluation/relational_eval.py` - FK coverage, degree distributions, join selectivity
+- ✅ `evaluation/integrity.py` - Referential integrity checks
+- ✅ `evaluation/workload.py` - Query execution and metrics
+- ✅ `evaluation/report_models.py` - Structured report models
+- ✅ `evaluation/report_builder.py` - Report generation
+
+**What Needs to Be Added**:
+1. **Schema Matching Layer** - Fuzzy matching (name similarity, type compatibility, distribution similarity)
+2. **Multi-Table Aggregation** - Coverage penalties, weighted aggregation across tables
+3. **Inter-Table Structure Scoring** - Relationship cardinality comparison, inter-table trends
+4. **Utility Scoring** - ML task evaluation, query-level utility comparison
+5. **Global Score Computation** - Combine all scores into final metrics
+
+### Implementation Plan
+
+#### Phase 1: Schema Matching Layer (NEW)
+
+**File**: `evaluation/schema_matching.py` (NEW)
+
+**Key Functions**:
+
+1. **`match_tables(real_ir: LogicalIR, synth_ir: LogicalIR, real_dfs: Dict, synth_dfs: Dict) -> Dict`**:
+   - Compute similarity scores for all (real, synthetic) table pairs
+   - Use signals: name similarity (tokenized, edit distance, Jaccard), row count scale, PK patterns, FK patterns
+   - Solve bipartite matching (Hungarian algorithm or greedy)
+   - Return: `{real_table: synth_table}` mapping, unmatched tables
+
+2. **`match_columns(real_table: TableSpec, synth_table: TableSpec, real_df: pd.DataFrame, synth_df: pd.DataFrame) -> Dict`**:
+   - For each matched table pair, match columns
+   - Use signals: name similarity, type compatibility, distribution similarity (range, cardinality)
+   - Return: `{real_col: synth_col}` mapping, unmatched columns
+
+3. **`compute_table_similarity(real_name: str, synth_name: str, real_df: pd.DataFrame, synth_df: pd.DataFrame) -> float`**:
+   - Name similarity: tokenized Jaccard, edit distance
+   - Row count scale: `1 - abs(log10(real_rows) - log10(synth_rows)) / max_scale`
+   - PK pattern: check if both have similar primary key structure
+   - FK pattern: check if both reference similar tables
+   - Combine with weights → similarity score [0,1]
+
+4. **`compute_column_similarity(real_col: ColumnSpec, synth_col: ColumnSpec, real_series: pd.Series, synth_series: pd.Series) -> float`**:
+   - Name similarity: tokenized Jaccard, edit distance
+   - Type compatibility: numeric vs cat vs datetime (binary match)
+   - Distribution similarity: for numeric (range overlap), for categorical (Jaccard of unique values)
+   - Combine with weights → similarity score [0,1]
+
+**Dependencies**: 
+- `difflib` or `fuzzywuzzy` for string similarity
+- `scipy.optimize.linear_sum_assignment` for Hungarian algorithm (or greedy matching)
+
+**Integration Point**: Called before any scoring in the main evaluation function
+
+---
+
+#### Phase 2: Multi-Table Schema & Marginal Scoring (EXTEND EXISTING)
+
+**File**: `evaluation/multi_table_eval.py` (NEW)
+
+**Key Functions**:
+
+1. **`compute_schema_score(real_ir: LogicalIR, synth_ir: LogicalIR, real_dfs: Dict, synth_dfs: Dict, table_mapping: Dict, column_mappings: Dict) -> float`**:
+   - For each matched table pair:
+     - Build aligned DataFrames (only matched columns)
+     - Call existing `table_eval.numeric_marginals()` and `table_eval.categorical_marginals()` per column
+     - Aggregate per-table score: `S̃_schema^(k) = mean(column_scores)`
+   - Compute coverage factors: `C_T`, `C_k` (from schema matching)
+   - Apply penalties: `S_schema = S_schema,aligned · C_schema`
+   - Return: `S_schema ∈ [0,1]`
+
+2. **`compute_intra_structure_score(real_ir: LogicalIR, synth_ir: LogicalIR, real_dfs: Dict, synth_dfs: Dict, table_mapping: Dict, column_mappings: Dict) -> float`**:
+   - For each matched table pair:
+     - Use existing `table_eval.correlation_metrics()` for all column pairs
+     - Aggregate per-table score: `S̃_structure,intra^(k) = mean(1 - correlation_deltas)`
+   - Apply coverage penalties
+   - Return: `S_structure,intra ∈ [0,1]`
+
+**Integration**: Extends `evaluation/table_eval.py` functions, adds aggregation logic
+
+---
+
+#### Phase 3: Inter-Table Structure Scoring (EXTEND EXISTING)
+
+**File**: `evaluation/multi_table_eval.py` (extend)
+
+**Key Functions**:
+
+1. **`compute_inter_structure_score(real_ir: LogicalIR, synth_ir: LogicalIR, real_dfs: Dict, synth_dfs: Dict, table_mapping: Dict) -> float`**:
+   - For each real FK relationship:
+     - **Referential Integrity**: Use existing `integrity.fk_coverage()` or `relational_eval.fk_coverage_duckdb()` → `r_RI`
+     - **Cardinality**: Use existing `relational_eval.degree_histogram()` for both real and synth, compare with `relational_eval.degree_distribution_divergence()` → `r_card`
+     - **Inter-Table Trends**: Join tables, compute column-pair metrics on joined result → `r_trend`
+   - Combine: `r_rel = α·r_RI + β·r_card + γ·r_trend`
+   - Average over all relationships: `S_structure,inter = mean(r_rel)`
+   - Return: `S_structure,inter ∈ [0,1]`
+
+**Integration**: Extends `evaluation/relational_eval.py` functions
+
+---
+
+#### Phase 4: Utility Scoring (NEW)
+
+**File**: `evaluation/utility_eval.py` (NEW)
+
+**Key Functions**:
+
+1. **`compute_local_utility(real_dfs: Dict, synth_dfs: Dict, table_mapping: Dict, column_mappings: Dict, target_columns: Dict[str, str]) -> float`**:
+   - For each table with a target column:
+     - Train model on real data, test on real held-out → `M_real`
+     - Train model on synthetic data, test on real held-out → `M_syn`
+     - Normalize: `u = max(0, min(1, M_syn/(M_real+ε)))`
+   - Average across tables → `S_utility,local`
+   - Return: `S_utility,local ∈ [0,1]`
+
+2. **`compute_relational_utility(real_ir: LogicalIR, synth_ir: LogicalIR, real_dfs: Dict, synth_dfs: Dict, join_recipes: List[Dict]) -> float`**:
+   - For each join recipe (from real schema):
+     - Build training dataset via joins (real and synthetic)
+     - Train models, evaluate → `M_real,rel`, `M_syn,rel`
+     - Normalize: `u = max(0, min(1, M_syn,rel/(M_real,rel+ε)))`
+   - Average → `S_utility,rel`
+   - Return: `S_utility,rel ∈ [0,1]`
+
+3. **`compute_query_utility(real_dfs: Dict, synth_dfs: Dict, queries: List[str]) -> float`**:
+   - For each query:
+     - Run on real DB → `a_R`
+     - Run on synthetic DB → `a_S`
+     - Compute relative error: `error = |a_R - a_S| / (|a_R| + ε)`
+     - Convert to score: `s_q = 1 - min(error, 1.0)`
+   - Average → `S_utility,queries`
+   - Return: `S_utility,queries ∈ [0,1]`
+
+**Dependencies**: 
+- `sklearn` for ML models (already available)
+- `duckdb` for query execution (already available)
+
+---
+
+#### Phase 5: Main Evaluation Function (NEW)
+
+**File**: `evaluation/multi_table_eval.py` (main function)
+
+**Key Function**:
+
+```python
+def evaluate_multi_table(
+    real_ir: LogicalIR,
+    synth_ir: LogicalIR,
+    real_dfs: Dict[str, pd.DataFrame],
+    synth_dfs: Dict[str, pd.DataFrame],
+    config: MultiTableEvalConfig,
+) -> MultiTableEvaluationReport:
+    """
+    Complete multi-table evaluation pipeline.
+    
+    Steps:
+    1. Schema matching (tables + columns)
+    2. Compute S_schema
+    3. Compute S_structure,intra
+    4. Compute S_structure,inter
+    5. Compute S_utility (if config includes utility tasks)
+    6. Compute S_global (optional)
+    
+    Returns:
+        MultiTableEvaluationReport with all scores
+    """
+```
+
+**Integration**: New main entry point, calls all the above functions
+
+---
+
+### File Structure
+
+```
+nl2data/src/nl2data/evaluation/
+├── schema_matching.py          # NEW - Fuzzy schema matching
+├── multi_table_eval.py          # NEW - Main multi-table evaluation
+├── utility_eval.py              # NEW - ML and query utility scoring
+├── schema_eval.py               # EXISTING - Extend if needed
+├── table_eval.py                # EXISTING - Use as-is
+├── relational_eval.py            # EXISTING - Extend for inter-table trends
+├── integrity.py                 # EXISTING - Use as-is
+├── workload.py                  # EXISTING - Use as-is
+├── report_models.py             # EXISTING - Add MultiTableEvaluationReport model
+└── report_builder.py            # EXISTING - Extend to support multi-table
+```
+
+### Dependencies to Add
+
+**New Python Packages** (if not already present):
+- `scipy.optimize` - For Hungarian algorithm (bipartite matching)
+- `difflib` or `fuzzywuzzy` - For string similarity (name matching)
+- `sdmetrics` (optional) - For advanced quality metrics if needed
+
+**Existing Dependencies** (already available):
+- `scipy.stats` - For statistical tests
+- `sklearn` - For ML utility tasks
+- `duckdb` - For query execution
+- `networkx` - For schema graphs
+- `pandas`, `numpy` - Data manipulation
+
+### Implementation Checklist
+
+**Phase 1: Schema Matching**
+- [ ] Implement `match_tables()` with name similarity, row count, PK/FK patterns
+- [ ] Implement `match_columns()` with name, type, distribution similarity
+- [ ] Add bipartite matching algorithm (Hungarian or greedy)
+- [ ] Unit tests for matching logic
+
+**Phase 2: Schema & Marginal Scoring**
+- [ ] Implement `compute_schema_score()` using existing marginal metrics
+- [ ] Add coverage penalty computation
+- [ ] Aggregate across tables
+- [ ] Unit tests
+
+**Phase 3: Inter-Table Structure**
+- [ ] Extend `compute_inter_structure_score()` using existing FK/degree metrics
+- [ ] Add inter-table trend computation (join + column-pair metrics)
+- [ ] Unit tests
+
+**Phase 4: Utility Scoring**
+- [ ] Implement `compute_local_utility()` with ML tasks
+- [ ] Implement `compute_relational_utility()` with join-based tasks
+- [ ] Implement `compute_query_utility()` with query workload
+- [ ] Unit tests
+
+**Phase 5: Integration**
+- [ ] Implement main `evaluate_multi_table()` function
+- [ ] Add `MultiTableEvaluationReport` model
+- [ ] Update CLI to support multi-table evaluation
+- [ ] Integration tests with real datasets
+
+### Testing Strategy
+
+1. **Unit Tests**: Each function independently
+2. **Integration Tests**: Full pipeline on simple 2-table schemas
+3. **Real Dataset Tests**: Test on OpenML datasets with known ground truth
+4. **Schema Mismatch Tests**: Test with intentionally mismatched table/column names
+
+### Performance Considerations
+
+- **Schema Matching**: Can be slow for large schemas → use greedy matching for >20 tables
+- **ML Utility Tasks**: Can be slow → make optional, use simple models (logistic regression)
+- **Query Utility**: Use DuckDB for fast query execution (already integrated)
+
+### Next Steps
+
+1. Start with **Phase 1 (Schema Matching)** - This is the foundation
+2. Then **Phase 2 (Schema Scoring)** - Builds on existing infrastructure
+3. Then **Phase 3 (Inter-Table Structure)** - Extends existing relational metrics
+4. Then **Phase 4 (Utility)** - New but straightforward
+5. Finally **Phase 5 (Integration)** - Tie everything together
+
+---
+
+## 📁 Evaluation Folder Reorganization Plan
+
+### Current Structure Analysis
+
+**Existing Files** (11 files):
+- `__init__.py` - Package exports
+- `config.py` - Evaluation configuration and thresholds
+- `report_models.py` - Pydantic models for reports
+- `report_builder.py` - Main evaluation function (single-table focused)
+- `schema_eval.py` - Schema coverage metrics (exact matching)
+- `schema.py` - Schema validation checks (PK/FK validation)
+- `table_eval.py` - Per-table metrics (marginals, correlations)
+- `relational_eval.py` - Relational metrics (FK coverage, degree distributions)
+- `integrity.py` - Referential integrity checks
+- `workload.py` - Workload query execution
+- `stats.py` - Statistical utility functions
+
+**Issues with Current Structure**:
+- Mixed concerns: validation vs evaluation vs metrics
+- Single-table focus (no multi-table aggregation)
+- No schema matching layer
+- No utility scoring
+- No clear separation between single-table and multi-table evaluation
+
+### Proposed Reorganized Structure
+
+```
+nl2data/src/nl2data/evaluation/
+│
+├── __init__.py                          # Package exports (updated)
+├── config.py                            # Configuration (extended)
+│
+├── models/                              # NEW - Report models
+│   ├── __init__.py
+│   ├── single_table.py                  # Single-table report models (moved from report_models.py)
+│   └── multi_table.py                   # NEW - Multi-table report models
+│
+├── matching/                            # NEW - Schema matching layer
+│   ├── __init__.py
+│   ├── table_matcher.py                 # Table-level matching
+│   ├── column_matcher.py                # Column-level matching
+│   └── similarity.py                    # Similarity computation utilities
+│
+├── metrics/                             # REORGANIZED - All metric computations
+│   ├── __init__.py
+│   ├── schema/                          # Schema-level metrics
+│   │   ├── __init__.py
+│   │   ├── coverage.py                   # Schema coverage (from schema_eval.py)
+│   │   └── validation.py                # Schema validation (from schema.py)
+│   │
+│   ├── table/                           # Table-level metrics
+│   │   ├── __init__.py
+│   │   ├── marginals.py                  # Marginal distributions (from table_eval.py)
+│   │   ├── correlations.py              # Column pair correlations (from table_eval.py)
+│   │   └── fidelity.py                   # Table fidelity scoring (from table_eval.py)
+│   │
+│   ├── relational/                      # Relational metrics
+│   │   ├── __init__.py
+│   │   ├── integrity.py                 # FK integrity (from integrity.py, relational_eval.py)
+│   │   ├── degrees.py                   # Degree distributions (from relational_eval.py)
+│   │   └── joins.py                     # Join selectivity (from relational_eval.py)
+│   │
+│   └── utility/                          # NEW - Utility metrics
+│       ├── __init__.py
+│       ├── ml_tasks.py                   # ML task evaluation
+│       └── queries.py                    # Query-level utility
+│
+├── aggregation/                         # NEW - Multi-table aggregation
+│   ├── __init__.py
+│   ├── schema_score.py                  # S_schema computation
+│   ├── structure_score.py               # S_structure,intra and S_structure,inter
+│   └── utility_score.py                 # S_utility computation
+│
+├── evaluators/                          # REORGANIZED - Main evaluation functions
+│   ├── __init__.py
+│   ├── single_table.py                  # Single-table evaluator (refactored from report_builder.py)
+│   └── multi_table.py                   # NEW - Multi-table evaluator
+│
+├── execution/                           # REORGANIZED - Execution and utilities
+│   ├── __init__.py
+│   ├── workload.py                      # Workload execution (moved from workload.py)
+│   └── stats.py                         # Statistical utilities (moved from stats.py)
+│
+└── utils/                               # NEW - Shared utilities
+    ├── __init__.py
+    └── normalization.py                 # Score normalization utilities
+```
+
+### Detailed File Organization
+
+#### 1. Root Level
+
+**`__init__.py`** (Updated):
+```python
+# Export both single-table and multi-table evaluators
+from .evaluators.single_table import evaluate as evaluate_single_table
+from .evaluators.multi_table import evaluate_multi_table
+from .config import EvaluationConfig, MultiTableEvalConfig
+from .models.single_table import EvaluationReport, ...
+from .models.multi_table import MultiTableEvaluationReport, ...
+```
+
+**`config.py`** (Extended):
+- Keep existing `EvaluationConfig`, `EvalThresholds`
+- Add `MultiTableEvalConfig` with:
+  - Schema matching thresholds
+  - Coverage penalty weights
+  - Utility task configurations
+  - Global score weights
+
+#### 2. `models/` - Report Models
+
+**`models/single_table.py`** (Moved from `report_models.py`):
+- `MetricResult`
+- `ColumnReport`
+- `TableReport`
+- `WorkloadReport`
+- `EvaluationReport`
+
+**`models/multi_table.py`** (NEW):
+- `TableMatch` - Matched table pair
+- `ColumnMatch` - Matched column pair
+- `SchemaMatchResult` - Complete schema matching result
+- `TableScore` - Per-table score breakdown
+- `RelationshipScore` - Per-relationship score
+- `MultiTableEvaluationReport` - Complete multi-table report
+
+#### 3. `matching/` - Schema Matching
+
+**`matching/table_matcher.py`** (NEW):
+- `match_tables()` - Main table matching function
+- `compute_table_similarity()` - Similarity scoring
+- `solve_bipartite_matching()` - Hungarian/greedy algorithm
+
+**`matching/column_matcher.py`** (NEW):
+- `match_columns()` - Main column matching function
+- `compute_column_similarity()` - Similarity scoring
+
+**`matching/similarity.py`** (NEW):
+- `name_similarity()` - String similarity (Jaccard, edit distance)
+- `type_compatibility()` - Type matching
+- `distribution_similarity()` - Distribution comparison
+
+#### 4. `metrics/` - Metric Computations
+
+**`metrics/schema/coverage.py`** (Refactored from `schema_eval.py`):
+- `schema_coverage()` - Exact name matching (keep for backward compat)
+- `compute_coverage_factors()` - Coverage penalty computation
+
+**`metrics/schema/validation.py`** (Moved from `schema.py`):
+- `check_pk_fk()` - Schema validation
+
+**`metrics/table/marginals.py`** (Refactored from `table_eval.py`):
+- `numeric_marginals()` - KS test, Wasserstein
+- `categorical_marginals()` - Chi-square test
+
+**`metrics/table/correlations.py`** (Refactored from `table_eval.py`):
+- `correlation_metrics()` - Pearson, Spearman
+- `mutual_information()` - MI for categorical pairs
+
+**`metrics/table/fidelity.py`** (Refactored from `table_eval.py`):
+- `table_fidelity_score()` - Aggregate table score
+
+**`metrics/relational/integrity.py`** (Refactored from `integrity.py`, `relational_eval.py`):
+- `fk_coverage()` - Referential integrity
+- `fk_coverage_duckdb()` - DuckDB-based FK check
+
+**`metrics/relational/degrees.py`** (Refactored from `relational_eval.py`):
+- `degree_histogram()` - Children per parent
+- `degree_distribution_divergence()` - Compare degree distributions
+
+**`metrics/relational/joins.py`** (Refactored from `relational_eval.py`):
+- `join_selectivity()` - Join selectivity metrics
+
+**`metrics/utility/ml_tasks.py`** (NEW):
+- `evaluate_local_ml_task()` - Single-table ML evaluation
+- `evaluate_relational_ml_task()` - Multi-table ML evaluation
+
+**`metrics/utility/queries.py`** (NEW):
+- `evaluate_query_utility()` - Query-level utility scoring
+
+#### 5. `aggregation/` - Multi-Table Aggregation
+
+**`aggregation/schema_score.py`** (NEW):
+- `compute_schema_score()` - S_schema computation
+- `aggregate_table_schema_scores()` - Per-table aggregation
+
+**`aggregation/structure_score.py`** (NEW):
+- `compute_intra_structure_score()` - S_structure,intra
+- `compute_inter_structure_score()` - S_structure,inter
+
+**`aggregation/utility_score.py`** (NEW):
+- `compute_utility_score()` - S_utility computation
+- `aggregate_utility_scores()` - Combine local, relational, query utility
+
+#### 6. `evaluators/` - Main Evaluation Functions
+
+**`evaluators/single_table.py`** (Refactored from `report_builder.py`):
+- `evaluate()` - Main single-table evaluation (backward compatible)
+- Uses metrics from `metrics/` modules
+
+**`evaluators/multi_table.py`** (NEW):
+- `evaluate_multi_table()` - Main multi-table evaluation
+- Orchestrates: matching → metrics → aggregation → report
+
+#### 7. `execution/` - Execution and Utilities
+
+**`execution/workload.py`** (Moved from `workload.py`):
+- `run_workloads()` - Query execution
+- `_generate_query()` - Query generation
+
+**`execution/stats.py`** (Moved from `stats.py`):
+- `zipf_fit()`, `chi_square_test()`, `ks_test()`, etc.
+- `gini_coefficient()`, `top_k_share()`
+
+#### 8. `utils/` - Shared Utilities
+
+**`utils/normalization.py`** (NEW):
+- `normalize_score()` - Score normalization to [0,1]
+- `clip_score()` - Clip scores to valid range
+
+### Migration Strategy
+
+#### Phase 1: Create New Structure (No Breaking Changes)
+
+1. **Create new directories**:
+   ```
+   mkdir -p evaluation/{models,matching,metrics/{schema,table,relational,utility},aggregation,evaluators,execution,utils}
+   ```
+
+2. **Move files** (keep originals for now):
+   - `report_models.py` → `models/single_table.py`
+   - `schema.py` → `metrics/schema/validation.py`
+   - `stats.py` → `execution/stats.py`
+   - `workload.py` → `execution/workload.py`
+
+3. **Split existing files**:
+   - `schema_eval.py` → `metrics/schema/coverage.py` (keep exact matching)
+   - `table_eval.py` → `metrics/table/{marginals,correlations,fidelity}.py`
+   - `relational_eval.py` → `metrics/relational/{integrity,degrees,joins}.py`
+   - `integrity.py` → Merge into `metrics/relational/integrity.py`
+
+4. **Update imports** in moved files
+
+#### Phase 2: Implement New Features
+
+1. **Schema Matching**:
+   - Create `matching/` module
+   - Implement table and column matchers
+
+2. **Multi-Table Aggregation**:
+   - Create `aggregation/` module
+   - Implement score computation functions
+
+3. **Utility Scoring**:
+   - Create `metrics/utility/` module
+   - Implement ML and query utility
+
+4. **Multi-Table Evaluator**:
+   - Create `evaluators/multi_table.py`
+   - Integrate all components
+
+#### Phase 3: Update Exports and Maintain Backward Compatibility
+
+1. **Update `__init__.py`**:
+   - Export both `evaluate()` (single-table) and `evaluate_multi_table()`
+   - Re-export moved models for backward compatibility
+
+2. **Update `report_builder.py`** (temporary wrapper):
+   ```python
+   # Keep for backward compatibility
+   from .evaluators.single_table import evaluate
+   ```
+
+3. **Update all internal imports** across codebase
+
+#### Phase 4: Cleanup
+
+1. **Remove old files** after migration complete
+2. **Update documentation**
+3. **Update tests**
+
+### File Size Estimates
+
+**New Files** (to be created):
+- `matching/` - ~500 lines total
+- `aggregation/` - ~400 lines total
+- `metrics/utility/` - ~300 lines total
+- `evaluators/multi_table.py` - ~200 lines
+- `models/multi_table.py` - ~150 lines
+- `utils/normalization.py` - ~50 lines
+
+**Refactored Files** (split from existing):
+- Existing ~2000 lines → Reorganized into ~2500 lines (with new features)
+
+**Total**: ~4000 lines (well-organized, modular)
+
+### Benefits of This Structure
+
+1. **Clear Separation of Concerns**:
+   - Matching vs Metrics vs Aggregation vs Evaluation
+   - Single-table vs Multi-table clearly separated
+
+2. **Easy to Extend**:
+   - Add new metrics in `metrics/`
+   - Add new aggregation methods in `aggregation/`
+   - Add new evaluators in `evaluators/`
+
+3. **Backward Compatible**:
+   - Single-table evaluation still works
+   - Can migrate gradually
+
+4. **Testable**:
+   - Each module can be tested independently
+   - Clear interfaces between modules
+
+5. **Maintainable**:
+   - Related code grouped together
+   - Easy to find and modify specific functionality
+
+### Implementation Order
+
+1. **Week 1**: Create structure, move existing files (Phase 1)
+2. **Week 2**: Implement schema matching (Phase 2, Part 1)
+3. **Week 3**: Implement aggregation and utility (Phase 2, Parts 2-3)
+4. **Week 4**: Integrate multi-table evaluator, update exports (Phase 2, Part 4 + Phase 3)
+5. **Week 5**: Testing, cleanup, documentation (Phase 4)
 
 ---
 
@@ -514,7 +1143,7 @@
 
 1. **IR Model** (`ir/generation.py`):
    - Add Pydantic model with `kind: Literal["..."]`
-   - Add to `Distribution` union (line ~90-100)
+   - Add to `Distribution` union (line ~178-194)
    - Add validators if needed
 
 2. **Sampler** (`generation/distributions/numeric.py` or new file):
@@ -544,7 +1173,7 @@
 ### Adding a New DSL Function
 
 1. **Allowlist** (`derived_program.py`):
-   - Add to `ALLOWED_FUNCS` (line ~8-34)
+   - Add to `ALLOWED_FUNCS` (line ~8-54)
 
 2. **Implementation** (`derived_eval.py`):
    - Add function to `build_env()` (line ~10-287)
@@ -566,7 +1195,7 @@
 
 ## 🐛 Common Pitfalls
 
-1. **Forgetting Distribution union**: Always add new distribution types to `Distribution` union in `ir/generation.py` (line ~90-100)
+1. **Forgetting Distribution union**: Always add new distribution types to `Distribution` union in `ir/generation.py` (line ~178-194)
 
 2. **Series vs scalar**: Always check `isinstance(x, pd.Series)` in DSL functions
 
@@ -608,11 +1237,26 @@
 - Added basic nuance coverage checker
 - Removed deprecated `DerivedSampler`
 
+### Phase 5: Additional Distributions ✅
+- Added Lognormal and Pareto distributions (IR models, samplers, factory)
+- Added Mixture distribution (IR model, sampler, factory)
+- Added Poisson and Exponential distributions (IR models, samplers, factory)
+- All distributions integrated into prompt system
+
+### Phase 6: Prompt Fixes ✅
+- Fixed prompt inconsistencies (ALLOWED_FUNCS verification, lag/lead clarification)
+- Reduced domain bias (made fraud patterns conditional)
+- Clarified window function usage in both prompt files
+
 ---
 
 ## 🎯 Next Steps
 
-1. **Task 1 (Fix Prompt Inconsistencies)** - **CRITICAL PRIORITY** - Fixes prevent LLMs from avoiding valid features
-2. **Task 2 (Add Poisson & Exponential)** - **HIGH PRIORITY** - Critical for count and time-based patterns in queries
-3. Task 3 (Enhanced nuance coverage) - Optional, already well-implemented
-4. Later tasks (additional distributions, conditional distributions, state machines, etc.) - Lower priority
+1. **🔥 Multi-Table Relational Evaluation Framework** - **TOP PRIORITY**
+   - Implement comprehensive evaluation system for benchmarking synthetic DBs against real DBs
+   - See detailed design in "Multi-Table Relational Evaluation Framework" section above
+   - Includes schema matching, structural scoring, and utility evaluation
+   
+2. **Integration Testing** - Test with 2-3 queries to verify LLMs use functions correctly
+3. **Optional Enhancements** - Enhance nuance coverage, add additional distributions if needed
+4. **Future Tasks** - Conditional distributions, state machines, `within_days_of()` helper, WorkloadIR integration (lower priority)

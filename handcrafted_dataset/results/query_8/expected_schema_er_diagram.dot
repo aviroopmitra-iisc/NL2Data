@@ -1,0 +1,17 @@
+// ER Diagram
+digraph {
+	rankdir=TB
+	node [shape=plaintext style="rounded,filled"]
+	graph [nodesep=1.0 ranksep=1.5 splines=polyline]
+	edge [arrowsize=0.8]
+	learning_event [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">learning_event</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>event_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">event_ts</TD><TD ALIGN="LEFT">DATETIME</TD></TR><TR><TD ALIGN="LEFT">student_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">course_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">content_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">event_type</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">is_correct</TD><TD ALIGN="LEFT">BOOL</TD></TR><TR><TD ALIGN="LEFT">is_intervention</TD><TD ALIGN="LEFT">BOOL</TD></TR><TR><TD ALIGN="LEFT">seconds_since_prev_event</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	dim_student [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">dim_student</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>student_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">cohort_year</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">latent_skill_level</TD><TD ALIGN="LEFT">FLOAT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	dim_course [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">dim_course</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>course_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">course_name</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">instructor_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	dim_content [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">dim_content</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>content_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">course_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">difficulty_level</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	dim_instructor [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">dim_instructor</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>instructor_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">instructor_name</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	learning_event -> dim_student [label=student_id arrowhead=crow color=black style=dashed]
+	learning_event -> dim_course [label=course_id arrowhead=crow color=black style=dashed]
+	learning_event -> dim_content [label=content_id arrowhead=crow color=black style=dashed]
+	dim_course -> dim_instructor [label=instructor_id arrowhead=crow color=black style=dashed]
+	dim_content -> dim_course [label=course_id arrowhead=crow color=black style=dashed]
+}

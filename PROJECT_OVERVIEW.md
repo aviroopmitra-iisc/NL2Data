@@ -4,15 +4,16 @@
 1. [Executive Summary](#executive-summary)
 2. [System Architecture](#system-architecture)
 3. [Project Structure](#project-structure)
-4. [Core Components](#core-components)
+4. [Realistic Datasets Framework](#realistic-datasets-framework)
+5. [Core Components](#core-components)
    - [Intermediate Representations (IRs)](#1-intermediate-representations-irs)
    - [Multi-Agent System](#2-multi-agent-system)
    - [Data Generation Engine](#3-data-generation-engine)
    - [Evaluation Framework](#4-evaluation-framework)
-5. [Data Flow](#data-flow)
-6. [Key Design Decisions](#key-design-decisions)
-7. [Implementation Details](#implementation-details)
-8. [Usage Examples](#usage-examples)
+6. [Data Flow](#data-flow)
+7. [Key Design Decisions](#key-design-decisions)
+8. [Implementation Details](#implementation-details)
+9. [Usage Examples](#usage-examples)
 
 ---
 
@@ -23,7 +24,7 @@
 ### Key Capabilities
 - **Natural Language Processing**: Converts free-form text descriptions into structured database schemas
 - **Multi-Agent Pipeline**: Specialized agents handle different aspects (conceptual design, logical schema, distributions, workloads)
-- **Realistic Data Generation**: Supports Zipf, seasonal, categorical, derived column, and window function distributions
+- **Realistic Data Generation**: Supports comprehensive distribution families including Uniform, Normal, Lognormal, Pareto, Poisson, Exponential, Mixture, Zipf, Seasonal, Categorical, Derived columns, and Window functions
 - **Window Functions**: Rolling aggregations, lag/lead operations with time-based and row-based windows
 - **Event System**: Global events that causally affect data generation (incidents, disruptions, campaigns)
 - **Advanced DSL**: Extended expression language with type casting, distributions, string operations, and helper functions
@@ -200,19 +201,21 @@ Project v3/
 │   │   ├── prompts/                 # Prompt templates
 │   │   │   ├── __init__.py
 │   │   │   ├── loader.py            # Prompt file loader
-│   │   │   └── roles/               # Agent-specific prompts
-│   │   │       ├── manager_system.txt
-│   │   │       ├── manager_user.txt
-│   │   │       ├── conceptual_system.txt
-│   │   │       ├── conceptual_user.txt
-│   │   │       ├── logical_system.txt
-│   │   │       ├── logical_user.txt
-│   │   │       ├── dist_system.txt
-│   │   │       ├── dist_user.txt
-│   │   │       ├── workload_system.txt
-│   │   │       ├── workload_user.txt
-│   │   │       ├── qa_system.txt
-│   │   │       └── qa_user.txt
+│   │   │   ├── roles/               # Agent-specific prompts
+│   │   │   │   ├── manager_system.txt
+│   │   │   │   ├── manager_user.txt
+│   │   │   │   ├── conceptual_system.txt
+│   │   │   │   ├── conceptual_user.txt
+│   │   │   │   ├── logical_system.txt
+│   │   │   │   ├── logical_user.txt
+│   │   │   │   ├── dist_system.txt
+│   │   │   │   ├── dist_user.txt
+│   │   │   │   ├── workload_system.txt
+│   │   │   │   ├── workload_user.txt
+│   │   │   │   ├── qa_system.txt
+│   │   │   │   └── qa_user.txt
+│   │   │   └── repair/              # Repair prompt templates
+│   │   │       └── categorical_values.txt  # Categorical value repair prompts
 │   │   │
 │   │   ├── ir/                      # Intermediate Representations
 │   │   │   ├── __init__.py          # IR exports
@@ -284,15 +287,45 @@ Project v3/
 │   │   │   ├── __init__.py
 │   │   │   └── quality_metrics.py  # Agent and query metrics collection
 │   │   │
-│   │   ├── evaluation/              # Evaluation framework
+│   │   ├── evaluation/              # Evaluation framework (restructured)
 │   │   │   ├── __init__.py
-│   │   │   ├── config.py            # EvaluationConfig
-│   │   │   ├── report_builder.py    # Main evaluation function
-│   │   │   ├── report_models.py     # EvaluationReport models
-│   │   │   ├── schema.py            # Schema validation (PK/FK)
-│   │   │   ├── integrity.py         # Referential integrity checks
-│   │   │   ├── stats.py              # Statistical tests
-│   │   │   └── workload.py          # Workload query execution
+│   │   │   ├── config.py            # EvaluationConfig, MultiTableEvalConfig
+│   │   │   ├── evaluators/          # Evaluation functions
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── single_table.py  # Single-table evaluator
+│   │   │   │   └── multi_table.py   # Multi-table evaluator
+│   │   │   ├── models/              # Report models
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── single_table.py  # Single-table models
+│   │   │   │   └── multi_table.py   # Multi-table models
+│   │   │   ├── metrics/             # Metric computation
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── schema/          # Schema metrics (coverage, validation)
+│   │   │   │   ├── table/           # Table metrics (marginals, correlations)
+│   │   │   │   └── relational/      # Relational metrics (FK, degrees, joins)
+│   │   │   ├── matching/             # Schema matching
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── table_matcher.py  # Table matching
+│   │   │   │   ├── column_matcher.py # Column matching
+│   │   │   │   ├── similarity.py     # Similarity utilities
+│   │   │   │   └── enhanced_matcher.py # Enhanced matching algorithm
+│   │   │   ├── quality/              # Quality evaluation (SD Metrics)
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── table_quality.py  # Single-table quality
+│   │   │   │   └── multi_table_quality.py # Multi-table quality
+│   │   │   ├── execution/            # Execution utilities
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── stats.py         # Statistical tests
+│   │   │   │   └── workload.py      # Workload execution
+│   │   │   ├── aggregation/         # Score aggregation
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── schema_score.py  # Schema score aggregation
+│   │   │   │   ├── structure_score.py # Structure score aggregation
+│   │   │   │   └── utility_score.py # Utility score aggregation
+│   │   │   └── utils/                # Evaluation utilities
+│   │   │       ├── __init__.py
+│   │   │       ├── normalization.py  # Name normalization
+│   │   │       └── fd_utils.py       # FD counting and signatures
 │   │   │
 │   │   ├── utils/                   # Utility functions
 │   │   │   ├── __init__.py
@@ -323,18 +356,1224 @@ Project v3/
 │
 ├── test_all_queries.py              # Batch testing script
 ├── test_phase1_evaluation.py        # Phase 1 IR evaluation script
+├── run_all_pipelines.py             # Batch pipeline runner for all descriptions
+├── prompt_generator_format.py      # Prompt generation utilities for schema design
 ├── test_utils/                      # Test utilities module
 │   ├── __init__.py
 │   ├── query_parser.py              # Query parsing utilities
 │   ├── cache_manager.py            # Data caching/existence checks
 │   ├── report_formatter.py         # Evaluation report formatting
 │   └── test_helpers.py             # Test helper functions
-├── example queries.txt              # Example NL descriptions
+├── example_queries.json             # Example queries in JSON format (replaces example queries.txt)
+├── EVALUATION_FRAMEWORK_PLAN.md    # Detailed evaluation framework implementation plan
+├── schema_evaluation_results.json   # Schema evaluation results
 ├── Improvement.md                   # Improvement roadmap and implementation guide
 ├── Instructions.md                  # Detailed instructions
 ├── UI.md                            # UI documentation
+├── realistic_datasets/              # Realistic dataset integration framework
+│   ├── analyze_datasets.py         # Dataset statistics analyzer
+│   ├── generate_descriptions.py    # NL description generator from statistics
+│   ├── run_pipeline_all.py          # Batch pipeline runner
+│   ├── evaluate_all_datasets.py    # Batch evaluation runner
+│   ├── generate_all_irs.py         # Batch IR generator
+│   ├── prompt_template.txt          # Template for NL description generation
+│   │
+│   ├── data/                       # Processed datasets
+│   │   ├── sakila/                 # Sakila database (MySQL sample DB)
+│   │   │   ├── *.csv               # Table CSV files
+│   │   │   ├── original_ir.json    # Gold standard schema
+│   │   │   ├── statistics.json     # Dataset statistics
+│   │   │   └── description_*.txt   # Generated NL descriptions
+│   │   ├── world/                  # World database (MySQL sample DB)
+│   │   │   ├── *.csv               # Table CSV files
+│   │   │   ├── original_ir.json    # Gold standard schema
+│   │   │   ├── statistics.json     # Dataset statistics
+│   │   │   └── description_*.txt   # Generated NL descriptions
+│   │   ├── openml/                 # OpenML datasets
+│   │   ├── datagov/                # Data.gov datasets
+│   │   ├── worldbank/              # World Bank indicators
+│   │   ├── openstreetmap/          # OpenStreetMap data
+│   │   └── census/                 # US Census data
+│   │
+│   ├── sakila/                     # Sakila database scripts
+│   │   ├── create_db.py            # Combined IR creation + data extraction
+│   │   ├── sakila-schema.sql       # SQL schema file
+│   │   └── sakila-data.sql         # SQL data file
+│   │
+│   ├── world/                      # World database scripts
+│   │   ├── create_db.py            # Combined IR creation + data extraction
+│   │   └── world.sql               # Combined SQL schema + data file
+│   │
+│   ├── openml/                     # OpenML integration
+│   ├── datagov/                    # Data.gov integration
+│   ├── worldbank/                  # World Bank integration
+│   ├── openstreetmap/              # OpenStreetMap integration
+│   ├── census/                     # Census integration
+│   │
+│   └── statistics_to_ir/          # Statistics to GenerationIR conversion
+│       ├── __init__.py             # Main entry point (create_generation_ir_from_statistics)
+│       ├── fd_discovery.py         # Apriori-based FD discovery with sampling
+│       ├── candidate_key_discovery.py  # Candidate key detection
+│       ├── schema_updater.py       # Schema update with FDs and candidate keys
+│       ├── stats_converter.py      # Statistics to GenerationIR conversion
+│       ├── distribution_mapper.py  # Distribution fitting and mapping
+│       ├── llm_assistant.py        # LLM client for conflict resolution
+│       └── utils.py                # Utility functions (load dataframes, save FDs)
+│
+├── RSchema (Text2Schema)/          # RSchema evaluation framework
+│   ├── annotation.jsonl            # Gold standard schema annotations
+│   ├── annotation_ddl.jsonl        # DDL format annotations
+│   ├── evaluate_rschema.py          # RSchema evaluation script
+│   └── evaluation_results.md       # Evaluation results report
+│
 └── PROJECT_OVERVIEW.md              # This file
 ```
+
+---
+
+## Realistic Datasets Framework
+
+### Overview
+
+The `realistic_datasets/` directory contains a comprehensive framework for integrating real-world databases and datasets into the NL2Data evaluation pipeline. This framework enables:
+
+1. **Schema Extraction**: Converting SQL schemas or CSV metadata into LogicalIR format
+2. **Data Extraction**: Parsing SQL INSERT statements or CSV files into clean CSV format
+3. **Statistics Generation**: Analyzing datasets to extract comprehensive statistical properties
+4. **NL Description Generation**: Using LLMs to generate diverse natural language descriptions from statistics
+5. **Pipeline Integration**: Running the full NL→IR→Data pipeline on real datasets for evaluation
+
+### Directory Structure
+
+The framework supports two directory structures:
+
+1. **One-Level Structure**: `data/dataset/` (e.g., `data/sakila/`, `data/world/`)
+2. **Two-Level Structure**: `data/source/dataset/` (e.g., `data/openml/iris/`, `data/worldbank/usa_economic/`)
+
+Both structures are automatically detected and processed by the analysis and description generation scripts.
+
+### Integrated Databases
+
+#### Sakila Database
+
+**Location**: `realistic_datasets/sakila/`
+
+**Description**: MySQL's sample database representing a DVD rental store with 16 tables including customers, films, actors, rentals, payments, and staff.
+
+**Files**:
+- `sakila-schema.sql`: SQL CREATE TABLE statements defining the schema
+- `sakila-data.sql`: SQL INSERT statements containing all data
+- `create_db.py`: Combined script for IR creation and data extraction
+
+**Tables**: 16 tables
+- `actor`, `address`, `category`, `city`, `country`, `customer`
+- `film`, `film_actor`, `film_category`, `inventory`, `language`
+- `payment`, `rental`, `staff`, `store`
+
+**Usage**:
+```bash
+cd realistic_datasets/sakila
+python create_db.py
+# or
+python -m realistic_datasets.sakila.create_db
+```
+
+This generates:
+- `data/sakila/original_ir.json`: Gold standard LogicalIR schema
+- `data/sakila/*.csv`: Clean CSV files for each table
+
+#### World Database
+
+**Location**: `realistic_datasets/world/`
+
+**Description**: MySQL's sample database containing world geography data with 3 tables: countries, cities, and country languages.
+
+**Files**:
+- `world.sql`: Combined SQL file with both schema and data
+- `create_db.py`: Combined script for IR creation and data extraction
+
+**Tables**: 3 tables
+- `country`: 239 countries with geographic and demographic data
+- `city`: 4,079 cities with population data
+- `countrylanguage`: 984 language records
+
+**Usage**:
+```bash
+cd realistic_datasets/world
+python create_db.py
+# or
+python -m realistic_datasets.world.create_db
+```
+
+This generates:
+- `data/world/original_ir.json`: Gold standard LogicalIR schema
+- `data/world/*.csv`: Clean CSV files for each table
+
+### Database Integration Scripts
+
+#### `create_db.py` (Sakila & World)
+
+**Purpose**: Unified script that combines schema parsing and data extraction into a single workflow.
+
+**Key Features**:
+1. **SQL Schema Parsing**: Extracts table definitions, columns, primary keys, and foreign keys from MySQL CREATE TABLE statements
+2. **Data Extraction**: Parses INSERT statements and extracts clean CSV data
+3. **Quote Handling**: Properly strips SQL quotes and handles escaped characters
+4. **Comprehensive Logging**: Detailed progress logging for debugging
+
+**Main Functions**:
+
+1. **`mysql_type_to_sql_type()`**: Converts MySQL types to NL2Data SQLType enum
+   - Maps `INT`, `BIGINT`, etc. → `INT`
+   - Maps `VARCHAR`, `TEXT`, etc. → `TEXT`
+   - Maps `DECIMAL`, `FLOAT`, etc. → `FLOAT`
+   - Maps `DATE` → `DATE`, `DATETIME` → `DATETIME`
+
+2. **`parse_create_table()`**: Parses CREATE TABLE statements using regex
+   - Handles backtick-quoted table/column names
+   - Extracts column definitions with types and nullability
+   - Identifies PRIMARY KEY constraints
+   - Identifies FOREIGN KEY constraints with references
+
+3. **`create_logical_ir_from_*_sql()`**: Converts parsed schema to LogicalIR
+   - Creates `TableSpec` objects for each table
+   - Creates `ColumnSpec` objects with proper types
+   - Creates `ForeignKeySpec` objects for relationships
+   - Sets schema mode to "oltp" (Online Transaction Processing)
+
+4. **`parse_insert_statements()`**: Extracts data from INSERT statements
+   - Handles single-row and multi-row INSERT statements
+   - Properly parses quoted strings (single and double quotes)
+   - Handles escaped quotes (`\'`, `\"`)
+   - Removes trailing semicolons and parentheses
+   - Splits multi-row inserts correctly
+
+5. **`create_csv_files()`**: Writes extracted data to CSV files
+   - Uses column names from LogicalIR for headers
+   - Handles mismatched column counts (truncates or pads)
+   - Creates one CSV file per table
+
+**Data Extraction Improvements**:
+
+The data extraction was enhanced to fix issues with:
+- **Quote Stripping**: Values like `'Kabul'` are now correctly extracted as `Kabul` (without quotes)
+- **Trailing Syntax**: Removes trailing `);` from SQL statements
+- **Escaped Characters**: Properly handles `\'` and `\"` in string values
+- **Multi-row Inserts**: Correctly splits `INSERT INTO table VALUES (row1), (row2), ...`
+
+**Example Output**:
+```
+============================================================
+Sakila Database - Create Original IR and Extract Data
+============================================================
+
+Schema file: sakila-schema.sql
+Data file: sakila-data.sql
+Output directory: ../data/sakila
+
+============================================================
+Step 1: Creating DatasetIR from SQL schema...
+============================================================
+Reading schema file: sakila-schema.sql
+SQL file read: 45678 characters
+  Parsing SQL content (45678 characters)...
+  Found 16 CREATE TABLE statements with ENGINE=
+  Processing table: actor
+    - 4 columns, 1 PK columns, 0 FKs
+  ...
+  Total tables parsed: 16
+Converting 16 tables to LogicalIR format...
+Created LogicalIR with 16 tables
+
+============================================================
+Step 2: Saving IR to JSON...
+============================================================
+✓ Saved original_ir.json to ../data/sakila/original_ir.json
+
+Summary:
+  Total tables: 16
+  - actor: 4 columns, PK: ['actor_id'], FKs: 0
+  ...
+
+============================================================
+Step 3: Extracting data from INSERT statements...
+============================================================
+  Reading SQL file: sakila-data.sql
+  SQL file read: 1234567 characters
+  Searching for INSERT statements...
+  Found 16 INSERT statement blocks
+
+Found data for 16 tables:
+  - actor: 200 rows
+  - address: 603 rows
+  ...
+
+============================================================
+Step 4: Creating CSV files...
+============================================================
+  Loading IR from ../data/sakila/original_ir.json
+  Creating CSV files...
+    Created actor.csv with 200 rows
+    Created address.csv with 603 rows
+    ...
+```
+
+### Dataset Analysis Framework
+
+#### `analyze_datasets.py`
+
+**Purpose**: Analyzes all datasets in the `data/` directory and generates comprehensive statistics.
+
+**Key Features**:
+1. **Multi-Table Support**: Handles both single-table and multi-table datasets
+2. **Flexible Directory Structure**: Supports both one-level and two-level directory structures
+3. **Comprehensive Statistics**: Generates statistics for numeric, categorical, temporal, and correlation data
+4. **Distribution Fitting**: Tests for various distribution families (normal, lognormal, pareto, etc.)
+5. **Zipf Analysis**: Detects and analyzes Zipf distributions in categorical data
+
+**Updated Directory Detection**:
+
+The script was updated to handle both directory structures:
+
+```python
+# Find all dataset directories
+# Handle both one-level (data/dataset/) and two-level (data/source/dataset/) structures
+dataset_dirs = []
+for item in data_dir.iterdir():
+    if not item.is_dir():
+        continue
+    
+    # Check if this is a dataset directory (one-level structure)
+    csv_files = list(item.glob("*.csv"))
+    if len(csv_files) > 0:
+        dataset_dirs.append(item)
+    else:
+        # Check if this is a source directory (two-level structure)
+        for dataset_dir in item.iterdir():
+            if dataset_dir.is_dir():
+                csv_files = list(dataset_dir.glob("*.csv"))
+                if len(csv_files) > 0:
+                    dataset_dirs.append(dataset_dir)
+```
+
+**Generated Statistics**:
+
+The `statistics.json` file contains:
+- **Schema Information**: Table names, column names, types, nullability
+- **Numeric Statistics**: Mean, std, min, max, distribution fits, skewness, Gini coefficient
+- **Categorical Statistics**: Cardinality, value counts, Zipf fits, top-k shares
+- **Temporal Statistics**: Date ranges, granularity, seasonal patterns
+- **Correlations**: Strong correlations between columns (|r| > 0.7)
+
+**Usage**:
+```bash
+python -m realistic_datasets.analyze_datasets
+```
+
+This processes all datasets and creates `statistics.json` files in each dataset directory.
+
+#### `generate_descriptions.py`
+
+**Purpose**: Generates diverse natural language descriptions from dataset statistics using LLMs.
+
+**Key Features**:
+1. **LLM-Based Generation**: Uses the configured LLM to generate descriptions
+2. **Diversity Checking**: Ensures descriptions are sufficiently different using TF-IDF similarity
+3. **Retry Logic**: Automatically retries if descriptions are too similar
+4. **Multi-Table Support**: Generates descriptions for both single-table and multi-table schemas
+5. **Flexible Directory Structure**: Supports both one-level and two-level directory structures
+
+**Updated Directory Detection**:
+
+The script was updated to find statistics files in both structures:
+
+```python
+# Find all statistics files
+# Handle both one-level (data/dataset/) and two-level (data/source/dataset/) structures
+stats_files = []
+for item in data_dir.iterdir():
+    if not item.is_dir():
+        continue
+    
+    # Check if this is a dataset directory (one-level structure)
+    stats_path = item / "statistics.json"
+    if stats_path.exists():
+        stats_files.append((stats_path, "root", item))
+    else:
+        # Check if this is a source directory (two-level structure)
+        for dataset_dir in item.iterdir():
+            if dataset_dir.is_dir():
+                stats_path = dataset_dir / "statistics.json"
+                if stats_path.exists():
+                    stats_files.append((stats_path, item.name, dataset_dir))
+```
+
+**Description Generation Process**:
+
+1. **Load Statistics**: Reads `statistics.json` for each dataset
+2. **Format Statistics**: Formats schema, numeric, categorical, temporal, and correlation data
+3. **Generate Variations**: Creates 3 different descriptions with variation instructions
+4. **Check Diversity**: Uses TF-IDF cosine similarity to ensure descriptions differ
+5. **Retry if Needed**: Retries up to 4 times if descriptions are too similar
+6. **Save Descriptions**: Writes `description_1.txt`, `description_2.txt`, `description_3.txt`
+
+**Similarity Threshold**: Default 0.4 (configurable via `--threshold`)
+
+**Usage**:
+```bash
+python -m realistic_datasets.generate_descriptions
+# or with custom threshold
+python -m realistic_datasets.generate_descriptions --threshold 0.3
+```
+
+#### `generate_all_irs.py`
+
+**Purpose**: Batch generator for creating GenerationIR from statistics for all datasets. This script orchestrates the complete statistics-to-IR conversion pipeline including functional dependency discovery, candidate key detection, and distribution mapping.
+
+**Key Features**:
+1. **FD Discovery**: Discovers functional dependencies from data using Apriori algorithm
+2. **Candidate Key Detection**: Finds candidate keys and updates primary keys
+3. **Distribution Mapping**: Converts statistical properties to distribution specifications
+4. **Schema Updates**: Updates original_ir.json with discovered constraints
+5. **Progress Logging**: Comprehensive logging for monitoring progress
+6. **Error Handling**: Graceful error handling with detailed error messages
+
+**Process Flow**:
+
+1. **FD Discovery** (`statistics_to_ir/fd_discovery.py`):
+   
+   **Algorithm**: Apriori-based functional dependency discovery
+   
+   - **Phase 1: Frequent Itemset Discovery (Apriori Algorithm)**:
+     - **Level 1**: Find all single columns with support ≥ `min_support`
+       - Support = (unique values) / (total rows)
+       - Example: Column with 95,000 unique values in 100,000 rows has support = 0.95
+       
+       ```python
+       # Level 1: Single columns
+       frequent_1 = []
+       for col in columns:
+           support = compute_column_support(clean_df, col)
+           if support >= min_support:
+               frequent_1.append((col,))
+       
+       def compute_column_support(df: pd.DataFrame, col: str) -> float:
+           unique_count = df[col].nunique()
+           total_count = len(df)
+           return unique_count / total_count if total_count > 0 else 0.0
+       ```
+     
+     - **Level 2 to k**: Generate k-itemset candidates from (k-1)-itemsets
+       - Join itemsets that share first (k-2) elements
+       - Example: `(A, B)` and `(A, C)` → candidate `(A, B, C)`
+       - Compute support for each candidate: unique combinations / total rows
+       - Filter candidates with support < `min_support`
+       
+       ```python
+       # Generate k+1 itemsets from k itemsets
+       for k in range(2, min(max_size + 1, len(columns) + 1)):
+           candidates = generate_candidates(current_level, k)
+           
+           frequent_k = []
+           for candidate in candidates:
+               support = compute_itemset_support(clean_df, candidate)
+               if support >= min_support:
+                   frequent_k.append(candidate)
+           
+           if not frequent_k:
+               break
+           current_level = frequent_k
+       
+       def generate_candidates(frequent_k_minus_1, k):
+           """Join itemsets that share first (k-2) elements."""
+           candidates = []
+           for i in range(len(frequent_k_minus_1)):
+               for j in range(i + 1, len(frequent_k_minus_1)):
+                   itemset1 = frequent_k_minus_1[i]
+                   itemset2 = frequent_k_minus_1[j]
+                   
+                   if k > 2 and itemset1[:k-2] == itemset2[:k-2]:
+                       candidate = tuple(sorted(set(itemset1) | set(itemset2)))
+                       if len(candidate) == k:
+                           candidates.append(candidate)
+           return candidates
+       
+       def compute_itemset_support(df: pd.DataFrame, itemset: Tuple[str, ...]) -> float:
+           """Support = unique combinations / total rows"""
+           grouped = df[list(itemset)].groupby(list(itemset))
+           unique_combinations = len(grouped)
+           total_rows = len(df)
+           return unique_combinations / total_rows if total_rows > 0 else 0.0
+       ```
+     
+     - **Maximum LHS Size**: Configurable `max_lhs_size` (default 3)
+       - For N columns: generates O(N³) candidates at most
+       - Prevents exponential explosion
+   
+   - **Phase 2: FD Validation**:
+     - For each frequent itemset (LHS), check all remaining columns as RHS
+     - **Confidence Calculation**:
+       - Confidence = P(RHS | LHS) = (rows where LHS uniquely determines RHS) / (total rows)
+       - Computed by grouping on LHS and checking if each group has unique RHS
+       - Example: If `(A, B)` → `C` with confidence 0.98, then 98% of rows have unique C for each (A,B) pair
+     
+     ```python
+     # For each frequent itemset (LHS), check all possible RHS
+     for lhs_cols in frequent_itemsets:
+         rhs_candidates = [c for c in non_key_columns if c not in lhs_cols]
+         
+         for rhs_col in rhs_candidates:
+             confidence = compute_fd_confidence(df, list(lhs_cols), rhs_col)
+             
+             if confidence >= min_confidence:
+                 fd = FDConstraint(
+                     table=table_name,
+                     lhs=list(lhs_cols),
+                     rhs=[rhs_col],
+                     mode="intra_row"
+                 )
+                 discovered_fds.append(fd)
+     
+     def compute_fd_confidence(df: pd.DataFrame, lhs_cols: List[str], rhs_col: str) -> float:
+         """Compute confidence: proportion of rows where LHS uniquely determines RHS"""
+         clean_df = df[lhs_cols + [rhs_col]].dropna()
+         if len(clean_df) == 0:
+             return 0.0
+         
+         grouped = clean_df.groupby(lhs_cols)
+         rows_with_unique_rhs = 0
+         total_rows = len(clean_df)
+         
+         for name, group in grouped:
+             if group[rhs_col].nunique() == 1:  # Unique RHS for this LHS
+                 rows_with_unique_rhs += len(group)
+         
+         return rows_with_unique_rhs / total_rows if total_rows > 0 else 0.0
+     ```
+     
+     - Only FDs with confidence ≥ `min_confidence` (default 0.95) are kept
+   
+   - **Performance Optimizations**:
+     - **Automatic Sampling**: Tables with >100K rows are automatically sampled to 100K rows for FD discovery
+       - Uses `random_state=42` for reproducibility
+       - Reduces processing time from hours to minutes for large datasets
+     - **Progress Logging**: Detailed progress logging per table, itemset level, and FD candidate checks
+       - Table-level: `[1/7] name.basics: 14,907,745 rows -> sampling 100,000 rows`
+       - Apriori level: `Level 2: 15/15 frequent itemsets`
+       - Itemset processing: `Processing itemset 1/41: ('title',)`
+       - Summary: `Completed: checked 150 FD candidates, found 89 FDs`
+     - **Configurable Thresholds**: `min_support` (default 0.95) and `min_confidence` (default 0.95)
+   
+   - **Column Filtering**:
+     - Excludes primary key columns (PK → all columns is trivial)
+     - Excludes foreign key columns (FK → referenced PK is already defined)
+     - Only considers non-key columns for FD discovery
+   
+   - **Output**: List of `FDConstraint` objects with:
+     - `table`: Table name
+     - `lhs`: List of LHS column names
+     - `rhs`: List of RHS column names (typically single column)
+     - `mode`: "intra_row" (functional dependency within a row)
+     - Support and confidence stored in separate map
+
+2. **Candidate Key Processing** (`statistics_to_ir/candidate_key_discovery.py`):
+   
+   **Algorithm**: Candidate key discovery from functional dependencies
+   
+   - **Definition**: A candidate key is a set of columns (LHS) that functionally determines ALL other columns in the table with perfect confidence (1.0) and support (1.0)
+   
+   - **FD Closure Computation**:
+     - Build direct FD map: LHS → set of RHS columns (for FDs with confidence = 1.0)
+     - Compute transitive closure using fixed-point iteration:
+       - Initialize: Each LHS determines itself
+       - Iterate: If LHS determines columns X, and X determines columns Y, then LHS determines Y
+       - Continue until no new columns are added (fixed point)
+     - Example: If `A → B`, `B → C`, then closure of `A` includes `{A, B, C}`
+     
+     ```python
+     # Build direct FD map (only perfect FDs: confidence = 1.0)
+     direct_fds: Dict[Tuple[str, ...], Set[str]] = {}
+     for fd in table_fds:
+         lhs_tuple = tuple(sorted(fd.lhs))
+         rhs_col = fd.rhs[0]
+         support, confidence = support_confidence_map[(table_name, tuple(fd.lhs), rhs_col)]
+         if support >= 1.0 and confidence >= 1.0:
+             direct_fds[lhs_tuple].add(rhs_col)
+     
+     # Compute transitive closure using fixed-point iteration
+     fd_closure: Dict[Tuple[str, ...], Set[str]] = {}
+     for lhs_tuple in direct_fds.keys():
+         fd_closure[lhs_tuple] = set(lhs_tuple)  # Initialize: LHS determines itself
+     
+     changed = True
+     while changed:
+         changed = False
+         for lhs_tuple in list(fd_closure.keys()):
+             determined = fd_closure[lhs_tuple].copy()
+             
+             # Check all FDs where LHS is a subset of determined columns
+             for fd_lhs_tuple, rhs_cols in direct_fds.items():
+                 if set(fd_lhs_tuple).issubset(determined):
+                     for rhs_col in rhs_cols:
+                         if rhs_col not in determined:
+                             determined.add(rhs_col)
+                             changed = True
+             
+             fd_closure[lhs_tuple] = determined
+     
+     # Find candidate keys: LHS that determine ALL columns
+     candidate_keys = []
+     for lhs_tuple, determined in fd_closure.items():
+         if determined.issuperset(available_columns_set):
+             candidate_keys.append(list(lhs_tuple))
+     ```
+   
+   - **Candidate Key Detection**:
+     - For each LHS in FD closure, check if it determines all columns in the table
+     - Also check single columns that are unique (nunique == row count)
+     - Filter to minimal candidate keys (no proper subset is also a candidate key)
+     
+     ```python
+     # Find candidate keys: LHS that determine ALL columns
+     candidate_keys = []
+     for lhs_tuple, determined in fd_closure.items():
+         if determined.issuperset(available_columns_set):
+             candidate_keys.append(list(lhs_tuple))
+     
+     # Also check unique single columns
+     for col in available_columns:
+         if df[col].nunique() == len(df[col].dropna()):
+             # Column is unique, check if it determines all columns
+             col_tuple = (col,)
+             if col_tuple in fd_closure:
+                 if fd_closure[col_tuple].issuperset(available_columns_set):
+                     if [col] not in candidate_keys:
+                         candidate_keys.append([col])
+     
+     # Find minimal candidate keys
+     def find_minimal_candidate_keys(candidate_keys):
+         """Remove candidate keys that are supersets of others."""
+         sorted_keys = sorted(candidate_keys, key=len)
+         minimal_keys = []
+         
+         for candidate in sorted_keys:
+             candidate_set = set(candidate)
+             is_superset = any(
+                 set(minimal).issubset(candidate_set) and len(minimal) < len(candidate)
+                 for minimal in minimal_keys
+             )
+             if not is_superset:
+                 minimal_keys.append(candidate)
+         
+         return minimal_keys
+     ```
+   
+   - **Primary Key Selection**:
+     - If existing primary key from DDL is a candidate key, keep it
+     - Otherwise, select smallest candidate key (prefer single-column keys)
+     - Uses LLM for conflict resolution if multiple minimal candidate keys exist (optional)
+   
+   - **FD Separation**:
+     - Separates FDs into candidate-key FDs (LHS is a candidate key) and regular FDs
+     - Candidate-key FDs are used for primary key inference
+     - Regular FDs are used for constraint enforcement during data generation
+
+3. **Schema Updates** (`statistics_to_ir/schema_updater.py`):
+   
+   **Process**: Integrates discovered constraints into the LogicalIR schema
+   
+   - **FD Integration**:
+     - Separates candidate-key FDs from regular FDs
+     - Candidate-key FDs: Used to infer/update primary keys
+     - Regular FDs: Added to `LogicalIR.constraints.fds` as `FDConstraint` objects
+   
+   - **Candidate Key Integration**:
+     - Adds discovered candidate keys to `TableSpec.candidate_keys`
+     - Updates `TableSpec.primary_key` if:
+       - No primary key exists in DDL, or
+       - Existing primary key is not a candidate key
+     - Prefers minimal candidate keys (smallest sets)
+   
+   - **Primary Key Selection**:
+     - If multiple candidate keys exist, selects based on:
+       1. Existing primary key from DDL (if it's a candidate key)
+       2. Smallest candidate key (prefer single-column)
+       3. LLM assistance for ambiguous cases (optional)
+   
+   - **File Update**:
+     - Loads existing `original_ir.json` (may be LogicalIR or DatasetIR)
+     - Updates LogicalIR with new constraints and candidate keys
+     - Saves back to `original_ir.json`
+     - Preserves other IR components (GenerationIR, WorkloadIR) if present
+     
+     ```python
+     def update_original_ir_file(original_ir_path: Path, updated_logical_ir: LogicalIR):
+         """Update original_ir.json with discovered constraints."""
+         # Load existing IR
+         existing_ir = load_ir_from_json(original_ir_path)
+         
+         # Update LogicalIR
+         if hasattr(existing_ir, 'logical'):
+             existing_ir.logical = updated_logical_ir
+         else:
+             # It's just LogicalIR, replace it
+             existing_ir = updated_logical_ir
+         
+         # Save back
+         save_ir_to_json(existing_ir, original_ir_path)
+     
+     # Example: Adding FDs to constraints
+     for table_name, table in updated_logical_ir.tables.items():
+         table_fds = [fd for fd in regular_fds if fd.table == table_name]
+         if table_fds:
+             if not updated_logical_ir.constraints:
+                 updated_logical_ir.constraints = ConstraintSpec()
+             
+             table_fd_constraint = TableFDConstraint(
+                 table=table_name,
+                 fds=table_fds
+             )
+             updated_logical_ir.constraints.fds.append(table_fd_constraint)
+     ```
+
+4. **Statistics to GenerationIR** (`statistics_to_ir/stats_converter.py`):
+   
+   **Process**: Converts statistical properties from `statistics.json` to `GenerationIR` distribution specifications
+   
+   - **Column-by-Column Conversion**:
+     - For each column in LogicalIR, retrieves statistics from `statistics.json`
+     - Determines if column is numeric or categorical based on statistics
+     - Handles type conflicts (both numeric and categorical stats exist) using LLM or fallback logic
+   
+   - **Numeric Distribution Mapping** (`statistics_to_ir/distribution_mapper.py`):
+     - **Supported Distributions**:
+       - **Uniform**: `DistUniform(low, high)` - for columns with no clear pattern
+       - **Normal**: `DistNormal(mean, std)` - for normally distributed data
+       - **Lognormal**: `DistLognormal(mean, sigma)` - for right-skewed positive data
+       - **Pareto**: `DistPareto(alpha, xm)` - for power-law distributions
+       - **Exponential**: `DistExponential(scale)` - for exponential decay patterns
+       - **Poisson**: `DistPoisson(lam)` - for count data
+     - **Selection Process**:
+       1. Check `distribution_fit.best_fit` from statistics (from KS tests during analysis)
+       2. If `best_pvalue < 0.05` and LLM available: Ask LLM to choose best distribution
+       3. Otherwise: Use `best_fit` from statistics
+       4. Extract parameters from `distribution_fit.fits[best_fit]`
+       5. Fallback to uniform distribution if no fit is suitable
+     
+     ```python
+     def convert_numeric_stats_to_distribution(
+         numeric_stats: Dict[str, Any],
+         llm_client: Optional[LLMClient] = None
+     ) -> Distribution:
+         dist_fit = numeric_stats.get("distribution_fit", {})
+         best_fit = dist_fit.get("best_fit")
+         best_pvalue = dist_fit.get("best_pvalue")
+         
+         # Handle None p-values
+         if best_pvalue is None:
+             best_pvalue = 0.0
+         
+         fits = dist_fit.get("fits", {})
+         
+         # If p-value is too low, ask LLM to choose
+         if best_pvalue < 0.05 and llm_client:
+             decision = llm_client.select_distribution(
+                 table_name="", column_name="", column_type="FLOAT",
+                 statistical_properties={...},
+                 distribution_fits=[...]
+             )
+             if decision and "selected_distribution" in decision:
+                 best_fit = decision["selected_distribution"]
+                 fit_params = decision.get("parameters", fits.get(best_fit, {}))
+         else:
+             fit_params = fits.get(best_fit, {})
+         
+         # Convert based on best_fit
+         if best_fit == "normal":
+             return DistNormal(
+                 kind="normal",
+                 mean=fit_params.get("mean", numeric_stats.get("mean", 0.0)),
+                 std=fit_params.get("std", numeric_stats.get("std", 1.0))
+             )
+         elif best_fit == "lognormal":
+             return DistLognormal(
+                 kind="lognormal",
+                 mean=fit_params.get("shape", 1.0),
+                 sigma=max(fit_params.get("scale", 1.0), 0.001)
+             )
+         # ... other distributions ...
+         
+         # Fallback to uniform
+         return DistUniform(
+             kind="uniform",
+             low=numeric_stats.get("min", 0.0),
+             high=numeric_stats.get("max", 1.0)
+         )
+     ```
+     - **Parameter Mapping**:
+       - Normal: `mean`, `std` from fit parameters
+       - Lognormal: `shape` → `mean`, `scale` → `sigma` (with minimum 0.001)
+       - Pareto: `alpha`, `scale` → `xm` (with minimum 0.001)
+       - Exponential: `scale` (with minimum 0.001)
+       - Poisson: `lambda` → `lam` (with minimum 0.001)
+     - **Bug Fix**: Properly handles `None` p-values from statistics (defaults to 0.0)
+       - Prevents `TypeError: '<' not supported between instances of 'NoneType' and 'float'`
+       - Occurs when distribution fitting fails or statistics are incomplete
+   
+   - **Categorical Distribution Mapping**:
+     - **Decision Logic**:
+       - High cardinality (>1000) or skewed (top-1 share > 0.1 with cardinality > 100) → Consider Zipf
+       - Otherwise → Use categorical distribution
+     - **Zipf Distribution** (`DistZipf(s, n)`):
+       - Parameter `s`: Zipf exponent (from `zipf_fit.s` in statistics)
+       - Parameter `n`: Cardinality (number of unique values)
+       - Uses LLM to decide between categorical and Zipf if ambiguous (optional)
+     - **Categorical Distribution** (`DistCategorical(domain)`):
+       - `domain.values`: List of unique values from `value_counts`
+       - `domain.probs`: Normalized probabilities from `value_counts`
+       - Probabilities renormalized if sum ≠ 1.0
+     
+     ```python
+     def convert_categorical_stats_to_distribution(
+         categorical_stats: Dict[str, Any],
+         table_name: str,
+         column: ColumnSpec,
+         llm_client: Optional[LLMClient] = None
+     ) -> Tuple[Distribution, Optional[ProviderRef]]:
+         cardinality = categorical_stats.get("cardinality", 0)
+         value_counts = categorical_stats.get("value_counts", {})
+         top_1_share = categorical_stats.get("top_1_share", 0.0)
+         zipf_fit = categorical_stats.get("zipf_fit")
+         
+         # High cardinality or skewed → consider Zipf
+         if cardinality > 1000 or (top_1_share > 0.1 and cardinality > 100):
+             if llm_client:
+                 decision = llm_client.decide_categorical_vs_zipf(
+                     table_name, column.name, categorical_stats, zipf_fit
+                 )
+                 if decision and decision.get("distribution_type") == "zipf":
+                     return DistZipf(
+                         kind="zipf",
+                         s=decision["parameters"].get("s", 1.2),
+                         n=cardinality
+                     ), None
+             elif zipf_fit and zipf_fit.get("s"):
+                 return DistZipf(
+                     kind="zipf",
+                     s=zipf_fit["s"],
+                     n=cardinality
+                 ), None
+         
+         # Use categorical distribution
+         values = list(value_counts.keys())
+         counts = list(value_counts.values())
+         total = sum(counts)
+         probs = [c / total for c in counts] if total > 0 else None
+         
+         # Normalize probabilities
+         if probs and abs(sum(probs) - 1.0) > 0.01:
+             total_prob = sum(probs)
+             probs = [p / total_prob for p in probs]
+         
+         return DistCategorical(
+             kind="categorical",
+             domain=CategoricalDomain(values=values, probs=probs)
+         ), None
+     ```
+   
+   - **Provider Suggestion** (Optional):
+     - LLM can suggest using external providers for certain columns
+     - Example: Use a name provider for person names, address provider for addresses
+     - Returns `ProviderRef` with provider name and configuration
+   
+   - **Missing Statistics Handling**:
+     - If no statistics available for a column, uses LLM to infer distribution (optional)
+     - Falls back to uniform distribution for numeric, categorical for text columns
+
+**FD Discovery Improvements**:
+
+The FD discovery process has been optimized for large datasets:
+
+- **Sampling**: Large tables (>100K rows) are automatically sampled to 100K rows, significantly speeding up processing for datasets like IMDB (millions of rows)
+- **Progress Logging**: 
+  - Per-table progress: `[1/7] name.basics: 14,907,745 rows -> sampling 100,000 rows`
+  - Apriori level progress: `Level 2: 15/15 frequent itemsets`
+  - Itemset processing: `Processing itemset 1/41: ('title',)`
+  - Summary: `Completed: checked 150 FD candidates, found 89 FDs`
+
+**LLM Integration** (`statistics_to_ir/llm_assistant.py`):
+
+The module supports optional LLM assistance for ambiguous cases:
+
+- **Distribution Selection**: When p-value is too low (<0.05), LLM chooses best distribution from candidates
+- **Type Conflict Resolution**: Resolves conflicts when column has both numeric and categorical statistics
+- **Categorical vs Zipf Decision**: Decides between categorical and Zipf distributions for high-cardinality columns
+- **Provider Suggestion**: Suggests external providers (e.g., name providers, address providers) for certain columns
+- **Missing Statistics Inference**: Infers distributions for columns without statistics
+- **Primary Key Selection**: Helps select primary key when multiple candidate keys exist
+
+**LLM Configuration**:
+
+- Set `use_llm=True` in `create_generation_ir_from_statistics()` to enable
+- Provide `llm_config` dictionary with API key, model name, etc.
+- Falls back to deterministic logic if LLM is disabled or unavailable
+
+**Distribution Mapper Fix**:
+
+Fixed `TypeError` when `best_pvalue` is `None` in statistics:
+- Added explicit `None` check before p-value comparison
+- Defaults to 0.0 if p-value is missing or `None`
+- Prevents crashes on datasets with incomplete distribution fits
+- Common cause: Distribution fitting failed during statistics generation
+
+**Usage**:
+```bash
+python -m realistic_datasets.generate_all_irs
+```
+
+This processes all datasets and creates `generation_ir.json` files in each dataset directory.
+
+**Programmatic Usage**:
+
+```python
+from pathlib import Path
+from realistic_datasets.statistics_to_ir import create_generation_ir_from_statistics
+
+# Generate GenerationIR for a single dataset
+stats_path = Path("realistic_datasets/data/imdb/imdb/statistics.json")
+original_ir_path = Path("realistic_datasets/data/imdb/imdb/original_ir.json")
+data_dir = Path("realistic_datasets/data/imdb/imdb")
+output_path = Path("realistic_datasets/data/imdb/imdb/generation_ir.json")
+
+generation_ir = create_generation_ir_from_statistics(
+    stats_path=stats_path,
+    original_ir_path=original_ir_path,
+    data_dir=data_dir,
+    output_path=output_path,
+    min_support=0.95,
+    min_confidence=0.95,
+    use_llm=False  # Set to True when LLM is configured
+)
+```
+
+**FD Discovery Usage**:
+
+```python
+from realistic_datasets.statistics_to_ir.fd_discovery import discover_functional_dependencies
+from nl2data.utils.ir_io import load_ir_from_json
+import pandas as pd
+
+# Load data and schema
+dfs = {
+    "table1": pd.read_csv("table1.csv"),
+    "table2": pd.read_csv("table2.csv")
+}
+logical_ir = load_ir_from_json("original_ir.json").logical
+
+# Discover FDs
+discovered_fds, support_confidence_map = discover_functional_dependencies(
+    dfs=dfs,
+    logical_ir=logical_ir,
+    min_support=0.95,      # Minimum support threshold
+    min_confidence=0.95,  # Minimum confidence threshold
+    max_lhs_size=3        # Maximum columns in LHS
+)
+
+# Access results
+for fd in discovered_fds:
+    print(f"{fd.table}: {fd.lhs} → {fd.rhs}")
+    key = (fd.table, tuple(fd.lhs), fd.rhs[0])
+    support, confidence = support_confidence_map[key]
+    print(f"  Support: {support:.3f}, Confidence: {confidence:.3f}")
+```
+
+**Output Files**:
+
+- **`discovered_fds.json`**: JSON file containing:
+  - `fds`: List of discovered functional dependencies
+    - Each FD: `{table, lhs: [columns], rhs: [columns], mode: "intra_row"}`
+  - `support_confidence`: Map of `(table, tuple(lhs), rhs)` → `(support, confidence)`
+  - Example:
+    ```json
+    {
+      "fds": [
+        {
+          "table": "title.akas",
+          "lhs": ["title", "region"],
+          "rhs": ["language"],
+          "mode": "intra_row"
+        },
+        {
+          "table": "name.basics",
+          "lhs": ["primaryName"],
+          "rhs": ["birthYear"],
+          "mode": "intra_row"
+        }
+      ],
+      "support_confidence": {
+        "('title.akas', ('title', 'region'), 'language')": [0.98, 0.97],
+        "('name.basics', ('primaryName',), 'birthYear')": [0.95, 0.96]
+      }
+    }
+    ```
+
+- **`generation_ir.json`**: GenerationIR with distribution specifications
+  - `columns`: List of `ColumnGenSpec` objects
+    - Each spec: `{table, column, distribution, provider, constraints}`
+  - `events`: List of event specifications (typically empty)
+  
+  Example:
+  ```json
+  {
+    "columns": [
+      {
+        "table": "title.basics",
+        "column": "primaryTitle",
+        "distribution": {
+          "kind": "categorical",
+          "domain": {
+            "values": ["The Matrix", "Inception", ...],
+            "probs": [0.001, 0.0008, ...]
+          }
+        },
+        "provider": null,
+        "constraints": []
+      },
+      {
+        "table": "title.ratings",
+        "column": "averageRating",
+        "distribution": {
+          "kind": "normal",
+          "mean": 6.5,
+          "std": 1.2
+        },
+        "provider": null,
+        "constraints": []
+      },
+      {
+        "table": "name.basics",
+        "column": "primaryName",
+        "distribution": {
+          "kind": "zipf",
+          "s": 1.3,
+          "n": 50000
+        },
+        "provider": null,
+        "constraints": []
+      }
+    ],
+    "events": []
+  }
+  ```
+
+- **Updated `original_ir.json`**: DatasetIR with:
+  - `logical`: Updated LogicalIR with discovered FDs and candidate keys
+  - `generation`: GenerationIR merged into DatasetIR
+  - `workload`: Optional WorkloadIR
+
+**Statistics Structure** (from `analyze_datasets.py`):
+
+The `statistics.json` file contains comprehensive statistical properties:
+
+- **Schema Information**: Table names, column names, SQL types, nullability
+- **Numeric Statistics** (for numeric columns):
+  - Basic: `mean`, `std`, `min`, `max`, `median`, `q25`, `q75`
+  - Distribution fits: `distribution_fit.fits` with KS test results for each distribution
+  - Best fit: `distribution_fit.best_fit`, `distribution_fit.best_pvalue`
+  - Shape: `skewness`, `kurtosis`
+  - Inequality: `gini_coefficient`
+  
+  Example:
+  ```json
+  {
+    "tables": {
+      "title.ratings": {
+        "columns": {
+          "averageRating": {
+            "type": "FLOAT",
+            "numeric_stats": {
+              "mean": 6.5,
+              "std": 1.2,
+              "min": 1.0,
+              "max": 10.0,
+              "median": 6.7,
+              "skewness": -0.3,
+              "kurtosis": 2.1,
+              "distribution_fit": {
+                "best_fit": "normal",
+                "best_pvalue": 0.15,
+                "fits": {
+                  "normal": {
+                    "mean": 6.5,
+                    "std": 1.2,
+                    "ks_pvalue": 0.15
+                  },
+                  "lognormal": {
+                    "shape": 1.8,
+                    "scale": 0.2,
+                    "ks_pvalue": 0.03
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  ```
+- **Categorical Statistics** (for categorical/text columns):
+  - `cardinality`: Number of unique values
+  - `value_counts`: Map of value → count
+  - `top_k_shares`: Proportion of top-k values
+  - `zipf_fit`: Zipf distribution parameters if applicable (`s`, `r_squared`)
+  
+  Example:
+  ```json
+  {
+    "tables": {
+      "name.basics": {
+        "columns": {
+          "primaryName": {
+            "type": "STRING",
+            "categorical_stats": {
+              "cardinality": 50000,
+              "value_counts": {
+                "John Smith": 150,
+                "Jane Doe": 120,
+                ...
+              },
+              "top_1_share": 0.003,
+              "top_10_share": 0.025,
+              "zipf_fit": {
+                "s": 1.3,
+                "r_squared": 0.94
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  ```
+- **Temporal Statistics** (for date/datetime columns):
+  - `date_range`: Min/max dates
+  - `granularity`: Day/week/month/year
+  - `seasonal_patterns`: Month/weekday distributions
+- **Correlations**: Strong correlations (|r| > 0.7) between numeric columns
+
+### Complete Workflow
+
+**Step 1: Create Database IRs and Extract Data**
+
+```bash
+# For Sakila
+cd realistic_datasets/sakila
+python create_db.py
+
+# For World
+cd realistic_datasets/world
+python create_db.py
+```
+
+This creates:
+- `data/sakila/original_ir.json` and `data/world/original_ir.json`
+- CSV files for all tables
+
+**Step 2: Generate Statistics**
+
+```bash
+cd realistic_datasets
+python analyze_datasets.py
+```
+
+This creates:
+- `data/sakila/statistics.json` and `data/world/statistics.json`
+
+**Step 3: Generate NL Descriptions**
+
+```bash
+cd realistic_datasets
+python generate_descriptions.py
+```
+
+This creates:
+- `data/sakila/description_1.txt`, `description_2.txt`, `description_3.txt`
+- `data/world/description_1.txt`, `description_2.txt`, `description_3.txt`
+
+**Step 3.5: Generate GenerationIR from Statistics** (Optional but recommended)
+
+```bash
+cd realistic_datasets
+python generate_all_irs.py
+```
+
+This creates:
+- `data/sakila/generation_ir.json` and `data/world/generation_ir.json`
+- `data/sakila/discovered_fds.json` and `data/world/discovered_fds.json`
+- Updated `data/sakila/original_ir.json` and `data/world/original_ir.json` (with FDs and candidate keys)
+
+**Note**: This step discovers functional dependencies, finds candidate keys, and converts statistics to distribution specifications. It's particularly useful for datasets with complex schemas and large tables.
+
+**Performance Characteristics**:
+
+- **Time Complexity**:
+  - FD Discovery: O(N × M² × R) where N = tables, M = columns, R = rows (after sampling)
+  - With sampling: O(N × M² × 100K) for large tables
+  - Candidate Key Discovery: O(M³) per table (FD closure computation)
+  - Distribution Mapping: O(M) per table (linear in number of columns)
+  
+- **Space Complexity**:
+  - FD Discovery: O(M²) for frequent itemsets and FD candidates
+  - Candidate Keys: O(M²) for FD closure map
+  
+- **Typical Processing Times** (on modern hardware):
+  - Small datasets (<10K rows): <1 second per table
+  - Medium datasets (10K-100K rows): 1-10 seconds per table
+  - Large datasets (>100K rows, sampled): 10-60 seconds per table
+  - IMDB dataset (7 tables, ~100M total rows): ~5-10 minutes total
+  - TPC-H dataset (8 tables, ~8M total rows): ~2-5 minutes total
+
+**Step 4: Run Pipeline**
+
+```bash
+cd realistic_datasets
+python run_pipeline_all.py
+```
+
+This runs the NL→IR→Data pipeline for each description and generates synthetic data.
+
+**Step 5: Evaluate**
+
+```bash
+cd realistic_datasets
+python evaluate_all_datasets.py
+```
+
+This evaluates the generated data against the original schemas.
+
+### Integration with Other Data Sources
+
+The framework also supports integration with:
+
+- **OpenML**: Machine learning datasets via API
+- **Data.gov**: US government open data
+- **World Bank**: Economic and social indicators
+- **OpenStreetMap**: Geographic data
+- **US Census**: Demographic data
+
+Each data source has its own directory with:
+- `create_original_ir.py`: Schema extraction script
+- `fetch_*.py`: Data fetching script
+- `README.md`: Source-specific documentation
+
+### Benefits
+
+1. **Realistic Evaluation**: Test the NL2Data pipeline on real-world schemas and data
+2. **Schema Diversity**: Access to diverse database schemas (OLTP, OLAP, etc.)
+3. **Automated Workflow**: End-to-end automation from SQL to evaluation
+4. **Reproducibility**: Consistent process for all datasets
+5. **Extensibility**: Easy to add new data sources
 
 ---
 
@@ -560,17 +1799,29 @@ class ColumnGenSpec(BaseModel):
 Distribution = Union[
     DistUniform,      # Uniform distribution (low, high)
     DistNormal,       # Normal distribution (mean, std)
-    DistZipf,         # Zipf distribution (s exponent, n domain size)
-    DistSeasonal,     # Seasonal dates (weights, granularity)
-    DistCategorical,  # Categorical (values, probabilities)
-    DistDerived,      # Derived column (expression, dtype, depends_on)
+    DistLognormal,    # Log-normal distribution (mean, sigma) - right-skewed
+    DistPareto,       # Pareto distribution (alpha, xm) - heavy-tailed
+    DistPoisson,      # Poisson distribution (lam) - count distributions
+    DistExponential,  # Exponential distribution (scale) - inter-arrival times
+    DistMixture,      # Mixture distribution (components with weights) - multi-modal
+    DistZipf,         # Zipf distribution (s exponent, n domain size) - power-law
+    DistSeasonal,     # Seasonal dates (weights, granularity: month/week/hour)
+    DistCategorical,  # Categorical (values, probabilities) - discrete values
+    DistDerived,      # Derived column (expression, dtype, depends_on) - computed
+    DistWindow,       # Window function (expression, partition_by, order_by, frame) - rolling aggregations
 ]
 ```
 
 **Key Features**:
 - Specifies how each column should be generated
-- Supports multiple distribution families
+- **Comprehensive Distribution Support**: 12 distribution types covering numeric, discrete, temporal, and computed patterns:
+  - **Numeric**: Uniform, Normal, Lognormal, Pareto, Poisson, Exponential, Mixture
+  - **Discrete**: Zipf (power-law), Categorical
+  - **Temporal**: Seasonal (month/week/hour granularity)
+  - **Computed**: Derived (DSL expressions), Window (rolling aggregations)
 - Derived columns with dependency tracking
+- Window functions for rolling aggregations and lag/lead operations
+- Event system for temporal patterns (pay-day spikes, incidents, etc.)
 - **Distribution Preprocessing**: Automatic fixes for common LLM errors:
   - Categorical values converted to strings
   - Date strings in uniform distributions converted to timestamps
@@ -2115,14 +3366,25 @@ class Orchestrator:
         # Start metrics tracking if enabled
         collector = None
         if self.enable_metrics:
-            collector = get_metrics_collector()
-            if self.query_id and self.query_text:
-                collector.start_query(self.query_id, self.query_text)
-            elif self.query_text:
-                # Generate query ID from text hash if not provided
-                import hashlib
-                query_id = hashlib.md5(self.query_text.encode()).hexdigest()[:8]
-                collector.start_query(query_id, self.query_text)
+            # Only enable metrics if we have query information
+            # Without query_id or query_text, metrics cannot be properly tracked
+            if self.query_id or self.query_text:
+                collector = get_metrics_collector()
+                if self.query_id and self.query_text:
+                    collector.start_query(self.query_id, self.query_text)
+                elif self.query_text:
+                    # Generate query ID from text hash if not provided
+                    import hashlib
+                    query_id = hashlib.md5(self.query_text.encode()).hexdigest()[:8]
+                    collector.start_query(query_id, self.query_text)
+                elif self.query_id:
+                    # Only query_id provided, use empty string for query_text
+                    collector.start_query(self.query_id, "")
+            else:
+                logger.warning(
+                    "Metrics tracking is enabled but both query_id and query_text are None. "
+                    "Metrics will not be tracked. Provide at least query_text to enable metrics."
+                )
         
         current_board = board
 
@@ -2135,14 +3397,34 @@ class Orchestrator:
             
             try:
                 if self.enable_repair:
-                    # Use repair loop system
+                    # Determine validators based on agent type
                     validators = self._get_validators_for_agent(agent)
-                    current_board = run_with_repair(
-                        agent,
-                        current_board,
-                        validators,
-                        max_retries=2,
-                    )
+                    
+                    # Only use repair loop if agent implements _repair() and validators are assigned
+                    # Check if agent's class overrides _repair() (different from BaseAgent's default no-op)
+                    agent_class = type(agent)
+                    agent_repair_method = getattr(agent_class, '_repair', None)
+                    base_repair_method = getattr(BaseAgent, '_repair', None)
+                    can_repair = agent_repair_method is not None and agent_repair_method is not base_repair_method
+                    
+                    if validators and can_repair:
+                        # Use repair loop system
+                        current_board = run_with_repair(
+                            agent,
+                            current_board,
+                            validators,
+                            max_retries=2,
+                        )
+                    elif validators and not can_repair:
+                        # Validators assigned but agent can't repair - log warning and run without repair loop
+                        logger.warning(
+                            f"Agent {agent.name} has validators assigned but does not implement _repair(). "
+                            f"Running without repair loop. Validation issues will not be automatically fixed."
+                        )
+                        current_board = agent.run(current_board)
+                    else:
+                        # No validators - direct execution
+                        current_board = agent.run(current_board)
                 else:
                     # Direct execution (legacy mode)
                     current_board = agent.run(current_board)
@@ -2178,6 +3460,9 @@ class Orchestrator:
         # Distribution Engineer needs generation validation
         if agent.name == "dist_engineer":
             validators.append(validate_generation_blackboard)
+        
+        # QA Compiler validates everything (but doesn't need repair loop)
+        # Other agents don't need validation (they produce IRs that are validated later)
         
         return validators
 ```
@@ -2243,6 +3528,45 @@ class Orchestrator:
   2. Raises the exception (stops pipeline)
   3. Blackboard state is preserved up to the point of failure
 
+**Key Features**:
+
+1. **Smart Repair Loop Detection**: 
+   - Only uses repair loop if agent implements `_repair()` method
+   - Checks if agent's class overrides the base `_repair()` method
+   - Falls back to direct execution if agent can't repair
+   - Logs warnings when validators are assigned but agent can't repair
+
+2. **Conditional Validator Assignment**:
+   - `logical_designer`: Gets `validate_logical_blackboard` validator
+   - `dist_engineer`: Gets `validate_generation_blackboard` validator
+   - Other agents: No validators (they produce IRs validated later)
+
+3. **Metrics Tracking**:
+   - Requires `query_id` or `query_text` to enable metrics
+   - Auto-generates query ID from text hash if only `query_text` provided
+   - Warns if metrics enabled but no query information provided
+   - Tracks agent execution time and success/failure
+
+4. **Flexible Execution Modes**:
+   - **Repair Mode** (`enable_repair=True`): Uses repair loops for agents that support it
+   - **Legacy Mode** (`enable_repair=False`): Direct execution without repair loops
+
+**Repair Loop Decision Logic**:
+
+The orchestrator intelligently determines whether to use repair loops:
+
+1. **Check if repair is enabled** (`enable_repair=True`)
+2. **Get validators for agent** (based on agent type via `_get_validators_for_agent()`)
+3. **Check if agent can repair** (implements `_repair()` method):
+   - Compares agent's `_repair` method with BaseAgent's default no-op
+   - Only uses repair if agent actually overrides the method
+4. **Execute accordingly**:
+   - If validators AND can repair → Use `run_with_repair()` with validators
+   - If validators BUT can't repair → Log warning, run directly (validation issues won't be fixed)
+   - If no validators → Run directly
+
+This ensures repair loops are only used when they can actually help, avoiding unnecessary overhead and ensuring agents without repair capabilities still execute correctly.
+
 **Usage**:
 
 ```python
@@ -2274,12 +3598,6 @@ final_board = orchestrator.execute(initial_board)
 # Access final IR
 dataset_ir = final_board.dataset_ir
 ```
-
-**Key Features**:
-- **Repair Loops**: Automatically retries agents with validation feedback (up to 2 retries)
-- **Metrics Tracking**: Tracks agent execution times, success/failure, validation issues
-- **Validator Selection**: Automatically selects appropriate validators for each agent type
-- **Backward Compatible**: Can disable repair/metrics for legacy behavior
 
 #### 2.10 Agent Factory (`utils/agent_factory.py`)
 
@@ -3988,14 +5306,26 @@ class SeasonalDateSampler(BaseSampler):
 
 ### 4. Evaluation Framework
 
-The evaluation framework validates generated data against IR specifications across multiple dimensions:
+The evaluation framework validates generated data against IR specifications across multiple dimensions. The framework has been restructured into a modular architecture supporting both single-table and multi-table evaluation:
 
 - **Schema Validation**: Primary key and foreign key integrity
 - **Statistical Alignment**: Distribution fitting (Zipf, categorical, numeric)
 - **Workload Performance**: Query execution time and correctness
 - **Relational Metrics**: Join selectivity, FK coverage, degree histograms
-- **Schema Coverage**: Comparison with gold/reference schemas
+- **Schema Coverage**: Comparison with gold/reference schemas using enhanced matching algorithms
 - **Table-Level Fidelity**: Marginal distributions and correlations
+- **Multi-Table Evaluation**: Comprehensive schema matching, quality assessment, and utility scoring
+- **SD Metrics Integration**: Statistical quality evaluation using SD Metrics library
+
+**New Modular Structure**:
+- `evaluation/evaluators/`: Single-table and multi-table evaluators
+- `evaluation/models/`: Data models for evaluation reports
+- `evaluation/metrics/`: Schema, table, and relational metrics
+- `evaluation/matching/`: Enhanced schema matching algorithms
+- `evaluation/quality/`: SD Metrics quality evaluation
+- `evaluation/execution/`: Workload execution and statistical tests
+- `evaluation/aggregation/`: Score aggregation utilities
+- `evaluation/utils/`: Helper utilities (normalization, FD utilities)
 
 #### 4.1 Evaluation Configuration (`evaluation/config.py`)
 
@@ -4028,11 +5358,40 @@ class EvalThresholds(BaseModel):
     workload: WorkloadConfig = WorkloadConfig()
 
 class EvaluationConfig(BaseModel):
-    """Complete evaluation configuration."""
+    """Complete evaluation configuration for single-table evaluation."""
     thresholds: EvalThresholds = EvalThresholds()
+
+# Multi-table evaluation configuration
+
+class SchemaMatchingConfig(BaseModel):
+    """Configuration for enhanced schema matching."""
+    # Column-level similarity weights
+    w_name_col: float = 0.1
+    w_range_col: float = 0.40
+    w_role_col: float = 0.30
+    w_FD_col: float = 0.20
+    
+    # Table-level similarity weights
+    alpha: float = 0.1  # Table-name similarity
+    beta: float = 0.6  # Column-alignment strength
+    gamma: float = 0.1  # Cardinality similarity
+    delta: float = 0.1  # FD signature similarity
+    
+    # Matching thresholds
+    tau_table: float = 0.5  # Table matching threshold
+    tau_col: float = 0.6  # Column matching threshold
+
+class MultiTableEvalConfig(BaseModel):
+    """Complete configuration for multi-table evaluation."""
+    matching: SchemaMatchingConfig = SchemaMatchingConfig()
+    coverage: CoverageConfig = CoverageConfig()
+    structure: StructureConfig = StructureConfig()
+    utility: UtilityConfig = UtilityConfig()
+    global_score: GlobalScoreConfig = GlobalScoreConfig()
+    quality: QualityEvaluationConfig = QualityEvaluationConfig()
 ```
 
-#### 4.2 Evaluation Report Models (`evaluation/report_models.py`)
+#### 4.2 Evaluation Report Models (`evaluation/models/`)
 
 ```python
 class MetricResult(BaseModel):
@@ -4067,15 +5426,82 @@ class WorkloadReport(BaseModel):
     passed: Optional[bool] = None
 
 class EvaluationReport(BaseModel):
-    """Complete evaluation report."""
+    """Complete evaluation report for single-table evaluation."""
     schema: List[TableReport] = Field(default_factory=list)
     columns: List[ColumnReport] = Field(default_factory=list)
     workloads: List[WorkloadReport] = Field(default_factory=list)
     summary: Dict[str, float] = Field(default_factory=dict)
     passed: bool = False
+
+# Multi-table evaluation models
+
+class SchemaMatchResult(BaseModel):
+    """Complete schema matching result."""
+    table_matches: List[TableMatch]
+    column_matches: Dict[str, List[ColumnMatch]]  # table_name -> [ColumnMatch]
+    unmatched_real_tables: List[str]
+    unmatched_synth_tables: List[str]
+    unmatched_real_columns: Dict[str, List[str]]
+    unmatched_synth_columns: Dict[str, List[str]]
+    table_coverage: float  # C_T
+    column_coverage: Dict[str, float]  # table_name -> C_k
+    quality_scores: Optional[Dict[str, QualityScore]] = None
+
+class MultiTableEvaluationReport(BaseModel):
+    """Complete multi-table evaluation report."""
+    schema_match: SchemaMatchResult
+    schema_score: float
+    structure_scores: Dict[str, float]
+    utility_scores: Dict[str, float]
+    global_score: Optional[float] = None
 ```
 
-#### 4.3 Schema Validation (`evaluation/schema.py`)
+#### 4.3 Evaluators (`evaluation/evaluators/`)
+
+**Single-Table Evaluator** (`evaluators/single_table.py`):
+- Evaluates individual tables against IR specifications
+- Validates schema, distributions, and workloads
+- Returns `EvaluationReport` with detailed metrics
+
+**Multi-Table Evaluator** (`evaluators/multi_table.py`):
+- Evaluates multi-table datasets with enhanced schema matching
+- Computes schema coverage, structure scores, and utility scores
+- Integrates SD Metrics for quality assessment
+- Returns `MultiTableEvaluationReport` with comprehensive metrics
+
+#### 4.4 Schema Matching (`evaluation/matching/`)
+
+**Enhanced Matching Algorithm** (`matching/enhanced_matcher.py`):
+- Multi-signal similarity combining name, range, role, and FD participation
+- Hungarian algorithm for optimal table and column matching
+- Deterministic preprocessing with normalization
+- Threshold-based filtering for high-quality matches
+
+**Key Components**:
+- `table_matcher.py`: Table-level matching with similarity scoring
+- `column_matcher.py`: Column-level matching within matched tables
+- `similarity.py`: Similarity computation utilities
+- `enhanced_matcher.py`: Main enhanced matching algorithm
+
+#### 4.5 Metrics (`evaluation/metrics/`)
+
+The metrics module is organized into three subdirectories:
+
+**Schema Metrics** (`metrics/schema/`):
+- `validation.py`: Primary key and foreign key validation (`check_pk_fk`)
+- `coverage.py`: Schema coverage computation for multi-table evaluation
+
+**Table Metrics** (`metrics/table/`):
+- `marginals.py`: Marginal distribution metrics (numeric and categorical)
+- `correlations.py`: Correlation metrics between column pairs
+- `fidelity.py`: Table-level fidelity score computation
+
+**Relational Metrics** (`metrics/relational/`):
+- `integrity.py`: Foreign key referential integrity checking (`fk_coverage`)
+- `degrees.py`: Degree distribution computation for FK relationships
+- `joins.py`: Join selectivity and relationship metrics
+
+#### 4.6 Schema Validation (`evaluation/metrics/schema/validation.py`)
 
 **Primary Key and Foreign Key Checking**:
 
@@ -4133,7 +5559,7 @@ def check_pk_fk(ir: DatasetIR) -> List[str]:
     return issues
 ```
 
-**Referential Integrity Checking** (`evaluation/integrity.py`):
+**Referential Integrity Checking** (`evaluation/metrics/relational/integrity.py`):
 
 ```python
 def fk_coverage(
@@ -4200,7 +5626,7 @@ def fk_coverage(
     return coverage
 ```
 
-#### 4.4 Workload Evaluation (`evaluation/workload.py`)
+#### 4.7 Workload Evaluation (`evaluation/execution/workload.py`)
 
 **DuckDB Integration**:
 
@@ -4264,7 +5690,19 @@ def run_workloads(
   - `join`: Joins fact table with dimension tables
   - `filter`: Filters on numeric columns
 
-#### 4.5 Evaluation Process (`evaluation/report_builder.py`)
+#### 4.8 Single-Table Evaluation Process (`evaluation/evaluators/single_table.py`)
+
+**Main Function**: `evaluate(ir, dfs, cfg) -> EvaluationReport`
+
+**Process**:
+1. Schema validation (PK/FK checks)
+2. Foreign key coverage computation
+3. Table report generation
+4. Column distribution evaluation (Zipf, categorical, numeric, seasonal)
+5. Workload query execution
+6. Summary computation and pass/fail determination
+
+**Backward Compatibility**: This evaluator maintains backward compatibility with the previous evaluation API.
 
 ```python
 def evaluate(
@@ -4449,7 +5887,14 @@ def evaluate(
     )
 ```
 
-#### 4.6 Relational Evaluation (`evaluation/relational_eval.py`)
+#### 4.9 Relational Metrics (`evaluation/metrics/relational/`)
+
+**Purpose**: Evaluates relational properties of multi-table datasets.
+
+**Key Modules**:
+- `integrity.py`: FK referential integrity and coverage
+- `degrees.py`: Degree distribution analysis (children per parent)
+- `joins.py`: Join selectivity and relationship metrics
 
 **Purpose**: Evaluates relational properties (FK coverage, degree distributions, join selectivity).
 
@@ -4571,7 +6016,12 @@ def evaluate_relational_metrics(
     return metrics
 ```
 
-#### 4.7 Schema Evaluation (`evaluation/schema_eval.py`)
+#### 4.10 Schema Coverage Metrics (`evaluation/metrics/schema/coverage.py`)
+
+**Purpose**: Computes schema coverage factors for multi-table evaluation.
+
+**Key Functions**:
+- `compute_coverage_factors()`: Computes table and column coverage factors (C_T, C_k)
 
 **Purpose**: Evaluates schema-level properties (coverage metrics, graph edit distance).
 
@@ -4656,7 +6106,14 @@ def graph_edit_distance(
     return float(next(ged))
 ```
 
-#### 4.8 Table Evaluation (`evaluation/table_eval.py`)
+#### 4.11 Table Metrics (`evaluation/metrics/table/`)
+
+**Purpose**: Evaluates data-level properties of individual tables.
+
+**Key Modules**:
+- `marginals.py`: Marginal distribution metrics for numeric and categorical columns
+- `correlations.py`: Correlation metrics (Pearson, Spearman) between column pairs
+- `fidelity.py`: Aggregate table fidelity score computation
 
 **Purpose**: Evaluates data-level properties (marginal distributions, correlations, mutual information).
 
@@ -4792,7 +6249,18 @@ def table_fidelity_score(
     return float(fidelity)
 ```
 
-#### 4.9 Statistical Tests (`evaluation/stats.py`)
+#### 4.12 Statistical Tests (`evaluation/execution/stats.py`)
+
+**Purpose**: Statistical test functions for distribution validation.
+
+**Key Functions**:
+- `zipf_fit()`: Fit Zipf distribution and return R² and exponent
+- `chi_square_test()`: Chi-square goodness-of-fit test
+- `ks_test()`: Kolmogorov-Smirnov test for numeric distributions
+- `wasserstein_distance_metric()`: Earth Mover's Distance
+- `cosine_similarity()`: Cosine similarity for distributions
+- `gini_coefficient()`: Gini coefficient for measuring inequality
+- `top_k_share()`: Top-k share computation
 
 **Zipf Fitting**:
 ```python
@@ -4883,7 +6351,171 @@ def gini_coefficient(values: np.ndarray) -> float:
 - **Cosine Similarity**: Vector similarity for distributions
 - **Zipf Fitting**: R² and exponent estimation for Zipf distributions
 
-#### 4.10 Nuance Coverage Lint (`ir/validators.py`)
+#### 4.10 Schema Accuracy Evaluation (`evaluate_schema_accuracy.py`)
+
+**Purpose**: Evaluates IR generation accuracy against gold standard schemas from `annotation.jsonl`.
+
+**Key Features**:
+1. **Gold Schema Parsing**: Converts gold schemas from JSON format to LogicalIR
+2. **Pipeline Execution**: Runs NL→IR pipeline for each description
+3. **Schema Matching**: Uses fuzzy matching to align predicted and gold schemas
+4. **Comprehensive Metrics**: Calculates table, attribute, PK, FK, and data type accuracy
+5. **Partial Evaluation**: Supports `--limit` and `--start` for partial runs
+6. **Dual Output**: Generates both JSON results and Markdown report
+
+**Metrics Calculated**:
+
+1. **Table Metrics**:
+   - **Precision**: Correctly predicted tables / Total predicted tables
+   - **Recall**: Correctly predicted tables / Total gold tables
+   - **F1 Score**: Harmonic mean of precision and recall
+   - **Accuracy**: Exact match accuracy
+
+2. **Attribute Metrics**:
+   - **F1 Score**: Harmonic mean of attribute precision and recall
+   - **Accuracy**: Exact match accuracy
+
+3. **Primary Key Accuracy**: Percentage of correctly identified primary keys
+
+4. **Foreign Key Accuracy**: Percentage of correctly identified foreign keys
+
+5. **Data Type Accuracy**: Percentage of correctly identified data types
+
+**Schema Matching Algorithm**:
+
+```python
+def match_tables(gold_tables: Set[str], pred_tables: Set[str], threshold: float = 0.7) -> Dict[str, str]:
+    """
+    Match predicted tables to gold tables using similarity.
+    
+    Process:
+    1. Try exact matches first (case-insensitive, normalized)
+    2. Then try similarity matching for remaining tables
+    3. Uses both normalized name comparison and direct similarity
+    4. Returns mapping: predicted_table -> gold_table
+    """
+```
+
+**Matching Features**:
+- **Normalization**: Removes underscores, spaces, case differences
+- **Similarity Threshold**: Default 0.7 (configurable)
+- **Bipartite Matching**: Ensures one-to-one table matching
+- **Attribute Matching**: Matches attributes within matched tables
+
+**Command-Line Arguments**:
+
+```bash
+python evaluate_schema_accuracy.py [--limit N] [--start M]
+```
+
+- `--limit N`: Process only first N entries (useful for testing)
+- `--start M`: Start from line number M (useful for resuming)
+
+**Output Files**:
+
+1. **`schema_evaluation_results.json`**: Detailed JSON results for each entry
+   ```json
+   {
+     "id": "entry_id",
+     "status": "success",
+     "table_precision": 0.95,
+     "table_recall": 0.90,
+     "table_f1": 0.92,
+     "attr_f1": 0.88,
+     "pk_accuracy": 1.0,
+     "fk_accuracy": 0.85,
+     "datatype_accuracy": 0.92
+   }
+   ```
+
+2. **`schema_evaluation_report.md`**: Human-readable Markdown report with:
+   - Overall statistics
+   - Per-entry breakdown
+   - Summary tables
+   - Error analysis
+
+**Logging**:
+
+- All output is logged to `evaluation_run.log` for debugging
+- Console output shows progress and results
+- Detailed error messages for failed entries
+
+**Usage Example**:
+
+```bash
+# Evaluate all entries
+python evaluate_schema_accuracy.py
+
+# Evaluate first 10 entries (for testing)
+python evaluate_schema_accuracy.py --limit 10
+
+# Resume from entry 50
+python evaluate_schema_accuracy.py --start 50
+
+# Evaluate entries 50-60
+python evaluate_schema_accuracy.py --start 50 --limit 10
+```
+
+**Integration with Orchestrator**:
+
+The script uses the Orchestrator with:
+- `query_id`: Generated from description hash
+- `query_text`: Natural language description
+- `enable_repair=True`: Uses repair loops (default)
+- `enable_metrics=True`: Tracks quality metrics (default)
+
+This ensures consistent pipeline execution with all features enabled.
+
+#### 4.13 Quality Evaluation (`evaluation/quality/`)
+
+**SD Metrics Integration**:
+- Uses SD Metrics library for comprehensive synthetic data quality assessment
+- Evaluates column shape, column pair trends, and multi-table relationships
+- Provides overall quality scores and detailed per-column/pair metrics
+
+**Key Functions**:
+- `evaluate_table_quality()`: Single-table quality evaluation using SD Metrics QualityReport
+- `evaluate_multi_table_quality()`: Multi-table quality evaluation with relationship analysis
+- `extract_relationship_mappings()`: Extract FK relationships for multi-table evaluation
+- `compute_quality_scores()`: Compute quality scores for matched tables/columns
+
+**Quality Metrics**:
+- Column shape metrics (KS Complement, TV Complement, Range Coverage, Category Coverage)
+- Column pair trends (Correlation Similarity, Contingency Similarity, Contrast)
+- Multi-table metrics (Cardinality Shape Similarity, Parent-Child Distribution Similarity)
+
+#### 4.14 Score Aggregation (`evaluation/aggregation/`)
+
+**Purpose**: Aggregates scores from different evaluation dimensions into final scores.
+
+**Key Functions**:
+- `compute_schema_score()`: Computes S_schema from coverage factors and matching results
+- `compute_intra_structure_score()`: Computes S_structure,intra from table-level fidelity scores
+- `compute_inter_structure_score()`: Computes S_structure,inter from referential integrity, cardinality, and trends
+- `compute_local_utility()`: Computes S_utility,local using ML model performance
+- `compute_query_utility()`: Computes S_utility,queries from query execution results
+- `compute_utility_score()`: Aggregates all utility components into S_utility
+
+**Components**:
+- `schema_score.py`: Schema score computation (S_schema)
+- `structure_score.py`: Structure score computation (S_structure,intra, S_structure,inter)
+- `utility_score.py`: Utility score computation (S_utility)
+
+#### 4.15 Multi-Table Evaluation Workflow
+
+**Complete Pipeline** (`evaluators/multi_table.py`):
+
+1. **Schema Matching**: Match tables and columns between real and synthetic schemas
+2. **Schema Score**: Compute S_schema from coverage and matching results
+3. **Intra-Table Structure**: Compute S_structure,intra from table fidelity scores
+4. **Inter-Table Structure**: Compute S_structure,inter from relational metrics
+5. **Utility Score**: Compute S_utility from ML tasks and query performance (optional)
+6. **Global Score**: Aggregate all scores into S_global (optional)
+7. **Quality Scores**: Compute SD Metrics quality scores for matched tables (optional)
+
+**Output**: `MultiTableEvaluationReport` with comprehensive metrics and scores.
+
+#### 4.16 Nuance Coverage Lint (`ir/validators.py`)
 
 **Automated Coverage Checking**:
 
@@ -4939,6 +6571,83 @@ def top_k_share(values: np.ndarray, k: int = 1) -> float:
     
     return float(top_k_sum / total_sum)
 ```
+
+---
+
+## Additional Tools and Frameworks
+
+### RSchema (Text2Schema) Evaluation Framework
+
+**Location**: `RSchema (Text2Schema)/`
+
+**Purpose**: Evaluation framework for comparing NL2Data schema generation against RSchema (Text2Schema) gold standard annotations.
+
+**Key Components**:
+- `annotation.jsonl`: Gold standard schema annotations in JSONL format
+- `annotation_ddl.jsonl`: DDL format annotations for comparison
+- `evaluate_rschema.py`: Evaluation script that runs NL2Data pipeline on RSchema descriptions and compares results
+- `evaluation_results.md`: Comprehensive evaluation report with metrics and analysis
+
+**Usage**:
+```bash
+cd "RSchema (Text2Schema)"
+python evaluate_rschema.py
+```
+
+**Evaluation Metrics**:
+- Schema accuracy (tables, columns, PKs, FKs)
+- Data type accuracy
+- Precision, recall, and F1 scores
+- Comparison with RSchema baseline
+
+### Prompt Generator Format (`prompt_generator_format.py`)
+
+**Purpose**: Utility functions for generating prompts for database schema design tasks, particularly for entity-relationship modeling and schema generation. This module provides a comprehensive set of prompt generation functions for multi-step schema design workflows.
+
+**Key Features**:
+- **Question Analysis**: `get_question_analysis_prompt()` - Analyzes user requirements
+- **Entity Identification**: Multiple variants for entity and attribute extraction
+  - `get_entity_analysis_prompt()` - Basic entity identification
+  - `get_entity_all_analysis_prompt()` - Entity and attribute identification
+  - English and Chinese variants available
+- **Relationship Analysis**: 
+  - `get_relation_analysis_prompt()` - Basic relationship identification
+  - `get_relation_all_analysis_prompt()` - Relationship with cardinality and attributes
+  - `get_relation_analysis_type_prompt()` - Relationship cardinality types
+- **Functional Dependency Analysis**:
+  - `get_entity_functional_dependency_analysis_prompt()` - Entity FD analysis
+  - `get_relation_functional_dependency_analysis_prompt()` - Relationship FD analysis
+- **Consensus and Verification**:
+  - `get_consensus_prompt()` - Expert consensus checking
+  - `get_verification_entity_prompt()` - Entity verification
+  - `get_dependency_consensus_prompt()` - FD consensus checking
+- **Direct Schema Generation**:
+  - `get_direct_prompt()` - Direct schema generation from requirements
+  - `get_direct_few_shot_prompt()` - Few-shot schema generation
+  - `get_cot_prompt()` - Chain-of-thought schema generation
+
+**Usage**: Imported by other scripts for generating structured prompts for LLM-based schema design tasks. Supports both Chinese and English prompt generation.
+
+### Batch Pipeline Runner (`run_all_pipelines.py`)
+
+**Purpose**: Runs the NL2Data pipeline for all description files in the realistic datasets framework and saves outputs in dataset folders.
+
+**Key Features**:
+- Processes all description files in realistic_datasets directories
+- Generates unique query IDs from description hashes
+- Saves IR and generated data in organized output structure
+- Handles errors gracefully and continues processing
+- Supports resuming from failures
+
+**Usage**:
+```bash
+python run_all_pipelines.py
+```
+
+**Output Structure**:
+- Creates output directories for each description
+- Saves `dataset_ir.json` and `ir_evaluation.json` in each output directory
+- Organizes outputs by dataset source and name
 
 ---
 
@@ -6649,7 +8358,7 @@ You must return a JSON object matching this structure:
       "table": "table_name",
       "column": "column_name",
       "distribution": {
-        "kind": "uniform" | "normal" | "zipf" | "seasonal" | "categorical" | "derived",
+        "kind": "uniform" | "normal" | "lognormal" | "pareto" | "poisson" | "exponential" | "mixture" | "zipf" | "seasonal" | "categorical" | "derived" | "window",
         ... (distribution-specific parameters)
       }
     }
@@ -6663,24 +8372,65 @@ Distribution types (EXACT STRUCTURE REQUIRED):
    - Example: {"kind": "uniform", "low": 0.0, "high": 100.0}
 
 2. Normal: {"kind": "normal", "mean": NUMBER, "std": NUMBER}
+   - Use for symmetric bell curve distributions
    - Example: {"kind": "normal", "mean": 50.0, "std": 10.0}
 
-3. Zipf: {"kind": "zipf", "s": NUMBER, "n": INTEGER | null}
+3. Lognormal: {"kind": "lognormal", "mean": NUMBER, "sigma": NUMBER}
+   - Use for right-skewed distributions (e.g., income, transaction amounts)
+   - mean: Mean of underlying normal distribution, sigma: Standard deviation (must be > 0)
+   - Example: {"kind": "lognormal", "mean": 3.0, "sigma": 1.0}
+
+4. Pareto: {"kind": "pareto", "alpha": NUMBER, "xm": NUMBER}
+   - Use for heavy-tailed distributions (e.g., wealth, file sizes)
+   - alpha: Shape parameter (must be > 0), xm: Scale parameter/minimum value (must be > 0, default: 1.0)
+   - Example: {"kind": "pareto", "alpha": 2.0, "xm": 1.0}
+
+5. Poisson: {"kind": "poisson", "lam": NUMBER}
+   - Use for count distributions (session lengths, event counts, arrivals)
+   - lam: Rate parameter (must be > 0, typically 1-20)
+   - Example: {"kind": "poisson", "lam": 5.0}
+
+6. Exponential: {"kind": "exponential", "scale": NUMBER}
+   - Use for inter-arrival times, waiting times, lifetimes
+   - scale: Scale parameter (1/lambda, must be > 0, default: 1.0)
+   - Example: {"kind": "exponential", "scale": 2.5}
+
+7. Mixture: {"kind": "mixture", "components": [{"weight": NUMBER, "distribution": {...}}, ...]}
+   - Use for multi-modal distributions (multiple peaks)
+   - weights must sum to approximately 1.0
+   - Example: {"kind": "mixture", "components": [{"weight": 0.7, "distribution": {"kind": "normal", "mean": 10, "std": 2}}, {"weight": 0.3, "distribution": {"kind": "normal", "mean": 30, "std": 3}}]}
+
+8. Zipf: {"kind": "zipf", "s": NUMBER, "n": INTEGER | null}
+   - Use for discrete popularity distributions (power-law, 80/20 rule)
    - s = exponent (typically 1.2-2.0), n = domain size
    - Example: {"kind": "zipf", "s": 1.2, "n": 1000}
 
-4. Seasonal: {"kind": "seasonal", "granularity": "month" | "week", "weights": {"January": 0.1, "February": 0.08, ...}}
+9. Seasonal: {"kind": "seasonal", "granularity": "month" | "week" | "hour", "weights": {...}}
    - Use for date columns with seasonal patterns
-   - weights must be a dictionary mapping month/week names to numbers
+   - granularity: "month", "week", or "hour"
+   - weights must be a dictionary mapping period names to numbers
    - Example: {"kind": "seasonal", "granularity": "month", "weights": {"December": 0.15, "November": 0.12, "January": 0.08, ...}}
+   - Example: {"kind": "seasonal", "granularity": "hour", "weights": {"07:00-09:00": 2.5, "12:00-14:00": 1.8, ...}}
 
-5. Categorical: {"kind": "categorical", "domain": {"values": ["string1", "string2", ...], "probs": [0.1, 0.2, ...] | null}}
+10. Categorical: {"kind": "categorical", "domain": {"values": ["string1", "string2", ...], "probs": [0.1, 0.2, ...] | null}}
+   - Use for discrete values with known options (status codes, categories, boolean flags, enums)
    - values MUST be an array of STRINGS (convert booleans/numbers to strings)
    - Example: {"kind": "categorical", "domain": {"values": ["true", "false"], "probs": [0.3, 0.7]}}
    - Example: {"kind": "categorical", "domain": {"values": ["2021", "2022", "2023"], "probs": null}}
 
-6. Derived: {"kind": "derived", "expression": "expression_string"}
-   - Example: {"kind": "derived", "expression": "price * quantity"}
+11. Derived: {"kind": "derived", "expression": "expression_string", "dtype": "float" | "int" | "bool" | "date" | "datetime" | null}
+   - Use for columns computed from other columns
+   - expression: DSL expression (Python-like syntax)
+   - dtype: Optional type hint
+   - Example: {"kind": "derived", "expression": "price * quantity", "dtype": "float"}
+
+12. Window: {"kind": "window", "expression": "sum(amount)" | "lag(amount, 1)" | ..., "partition_by": [...], "order_by": "timestamp", "frame": {"type": "RANGE" | "ROWS", "preceding": "7d", "following": null}}
+   - Use for rolling aggregations (sum, mean, count over windows) and lag/lead operations
+   - expression: Aggregation function or column reference (lag/lead allowed here)
+   - partition_by: Columns to partition by (optional)
+   - order_by: Column to order by (must be datetime for RANGE windows)
+   - frame: Window frame specification
+   - Example: {"kind": "window", "expression": "rolling_sum(amount)", "partition_by": ["customer_id"], "order_by": "timestamp", "frame": {"type": "RANGE", "preceding": "30d"}}
 
 CRITICAL RULES:
 - For DATE columns: use "seasonal" distribution, NOT "uniform" with date strings

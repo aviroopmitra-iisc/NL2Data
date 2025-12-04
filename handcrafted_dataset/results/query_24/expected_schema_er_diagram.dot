@@ -1,0 +1,21 @@
+// ER Diagram
+digraph {
+	rankdir=TB
+	node [shape=plaintext style="rounded,filled"]
+	graph [nodesep=1.0 ranksep=1.5 splines=polyline]
+	edge [arrowsize=0.8]
+	restaurant [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">restaurant</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>restaurant_id</B></TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	menu_item [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">menu_item</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>menu_item_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">restaurant_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	customer [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">customer</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>customer_id</B></TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	courier [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">courier</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>courier_id</B></TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	order [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">order</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>order_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">customer_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">restaurant_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	order_item [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">order_item</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>order_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT"><B>order_item_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">menu_item_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	courier_assignment [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">courier_assignment</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>order_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT"><B>assignment_seq</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">courier_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">pickup_ts</TD><TD ALIGN="LEFT">DATETIME</TD></TR><TR><TD ALIGN="LEFT">delivery_ts</TD><TD ALIGN="LEFT">DATETIME</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	menu_item -> restaurant [label=restaurant_id arrowhead=crow color=black style=dashed]
+	order -> customer [label=customer_id arrowhead=crow color=black style=dashed]
+	order -> restaurant [label=restaurant_id arrowhead=crow color=black style=dashed]
+	order_item -> order [label=order_id arrowhead=crow color=black style=dashed]
+	order_item -> menu_item [label=menu_item_id arrowhead=crow color=black style=dashed]
+	courier_assignment -> order [label=order_id arrowhead=crow color=black style=dashed]
+	courier_assignment -> courier [label=courier_id arrowhead=crow color=black style=dashed]
+}

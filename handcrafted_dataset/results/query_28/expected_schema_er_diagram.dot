@@ -1,0 +1,18 @@
+// ER Diagram
+digraph {
+	rankdir=TB
+	node [shape=plaintext style="rounded,filled"]
+	graph [nodesep=1.0 ranksep=1.5 splines=polyline]
+	edge [arrowsize=0.8]
+	user [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">user</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>user_id</B></TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	product [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">product</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>product_id</B></TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	inventory [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">inventory</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>product_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">on_hand_qty</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	order [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">order</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>order_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">user_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	order_line [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">order_line</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>order_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT"><B>line_number</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">product_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">net_revenue</TD><TD ALIGN="LEFT">FLOAT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	return [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">return</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>return_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">order_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">line_number</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	inventory -> product [label=product_id arrowhead=crow color=black style=dashed]
+	order -> user [label=user_id arrowhead=crow color=black style=dashed]
+	order_line -> order [label=order_id arrowhead=crow color=black style=dashed]
+	order_line -> product [label=product_id arrowhead=crow color=black style=dashed]
+	return -> order [label=order_id arrowhead=crow color=black style=dashed]
+}

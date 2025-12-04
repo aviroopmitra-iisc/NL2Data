@@ -1,0 +1,15 @@
+// ER Diagram
+digraph {
+	rankdir=TB
+	node [shape=plaintext style="rounded,filled"]
+	graph [nodesep=1.0 ranksep=1.5 splines=polyline]
+	edge [arrowsize=0.8]
+	driver [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">driver</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>driver_id</B></TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	rider [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">rider</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>rider_id</B></TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	zone [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">zone</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>zone_id</B></TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	trip [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">trip</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>trip_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">driver_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">rider_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">pickup_zone_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">dropoff_zone_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">status</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">surge_multiplier</TD><TD ALIGN="LEFT">FLOAT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	trip -> driver [label=driver_id arrowhead=crow color=black style=dashed]
+	trip -> rider [label=rider_id arrowhead=crow color=black style=dashed]
+	trip -> zone [label=pickup_zone_id arrowhead=crow color=black style=dashed]
+	trip -> zone [label=dropoff_zone_id arrowhead=crow color=black style=dashed]
+}

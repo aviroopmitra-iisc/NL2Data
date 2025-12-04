@@ -1,0 +1,14 @@
+// ER Diagram
+digraph {
+	rankdir=TB
+	node [shape=plaintext style="rounded,filled"]
+	graph [nodesep=1.0 ranksep=1.5 splines=polyline]
+	edge [arrowsize=0.8]
+	member [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">member</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>member_id</B></TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	item [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">item</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>item_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">isbn</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">title</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">author</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">subject</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	copy [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">copy</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>copy_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">item_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">acquisition_date</TD><TD ALIGN="LEFT">DATE</TD></TR><TR><TD ALIGN="LEFT">condition</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	loan [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">loan</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>loan_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">member_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">copy_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">loan_date</TD><TD ALIGN="LEFT">DATE</TD></TR><TR><TD ALIGN="LEFT">due_date</TD><TD ALIGN="LEFT">DATE</TD></TR><TR><TD ALIGN="LEFT">return_date</TD><TD ALIGN="LEFT">DATE</TD></TR><TR><TD ALIGN="LEFT">status</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">fine_amount</TD><TD ALIGN="LEFT">FLOAT</TD></TR><TR><TD ALIGN="LEFT">loan_policy</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	copy -> item [label=item_id arrowhead=crow color=black style=dashed]
+	loan -> member [label=member_id arrowhead=crow color=black style=dashed]
+	loan -> copy [label=copy_id arrowhead=crow color=black style=dashed]
+}

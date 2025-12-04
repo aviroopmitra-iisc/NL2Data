@@ -1,0 +1,42 @@
+datasets:
+  - id: 1          # Anneal - classification with many categorical features
+    name: "anneal"
+    description: "Steel annealing classification dataset with mixed numeric and categorical features"
+  - id: 2          # Anneal (alternative version)
+    name: "anneal_alt"
+    description: "Anneal dataset alternative version"
+  - id: 3          # Zoo - classification
+    name: "zoo"
+    description: "Zoo animal classification dataset"
+  - id: 6          # Diabetes - regression
+    name: "diabetes"
+    description: "Diabetes regression dataset"
+  - id: 14         # Mammography - classification
+    name: "mammography"
+    description: "Mammography classification dataset"
+  - id: 16         # Auto MPG - regression
+    name: "auto_mpg"
+    description: "Auto MPG regression dataset"
+  - id: 20         # Nursery - classification
+    name: "nursery"
+    description: "Nursery classification dataset"
+  - id: 24         # Mushroom - classification
+    name: "mushroom"
+    description: "Mushroom classification dataset"
+  - id: 31         # Credit-g - classification
+    name: "credit_g"
+    description: "German credit classification dataset"
+  - id: 54         # Vehicle - classification
+    name: "vehicle"
+    description: "Vehicle classification dataset"
+  - id: 60         # Waveform - classification
+    name: "waveform"
+    description: "Waveform classification dataset"
+  - id: 61         # Iris - classic classification
+    name: "iris"
+    description: "Classic iris classification dataset"
+
+settings:
+  max_datasets: null  # null = process all, or set a limit
+  output_dir: "../data/openml"
+

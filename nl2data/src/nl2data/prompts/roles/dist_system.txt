@@ -387,7 +387,7 @@ CRITICAL RULES:
 
 ## Event Specifications
 
-⚠️ **CRITICAL**: Events are MANDATORY when NL mentions:
+⚠️ **CRITICAL**: Events are MANDATORY when NL mentions (apply ONLY if NL explicitly mentions these patterns):
 - "pay-day spikes", "1st and 15th", "pay day", "monthly spikes"
 - "fraud rings", "coordinated fraud", "multiple cards same merchant"
 - "impossible travel", "geographically distant locations in short time"
@@ -511,7 +511,7 @@ CRITICAL RULES:
 
 ## Window Functions
 
-⚠️ **CRITICAL**: Window functions are MANDATORY when NL mentions:
+⚠️ **CRITICAL**: Window functions are MANDATORY when NL mentions (apply to any domain, not just fraud):
 - "velocity", "transactions in last 24h", "amount sum last 7 days"
 - "rolling", "last N days", "last N minutes", "last N hours"
 - "lag", "lead", "moving average", "sliding window"
@@ -614,7 +614,11 @@ CRITICAL RULES:
 - `ROWS`: Row-based (e.g., 100 rows) - use for fixed number of rows
 - `preceding`: How far back to look (e.g., "24h" or 100)
 
-## Fraud Pattern Modeling
+## Domain-Specific Pattern Modeling
+
+⚠️ **IMPORTANT**: The following sections describe patterns for specific domains (fraud/finance, pay-day spikes, etc.). **ONLY apply these patterns IF the NL description explicitly mentions them**. Do not create fraud-related columns or patterns unless the NL description specifically requests them.
+
+### Fraud Pattern Modeling
 
 **REQUIRED**: When NL mentions fraud patterns, velocity features, sequential behaviors, or conditional amounts:
 

@@ -13,7 +13,7 @@ from nl2data.utils.data_loader import load_csv_files
 from nl2data.ir.dataset import DatasetIR
 from nl2data.generation.engine.pipeline import generate_from_ir
 from nl2data.evaluation.config import EvaluationConfig
-from nl2data.evaluation.report_builder import evaluate
+from nl2data.evaluation import evaluate
 
 app = typer.Typer(help="NL2Data: Natural Language to Synthetic Relational Data")
 
@@ -103,7 +103,7 @@ def generate(ir_json: Path, out_dir: Path):
     settings = get_settings()
 
     typer.echo(f"Loading IR from {ir_json}")
-    ir = TypeAdapter(DatasetIR).validate_json(ir_json.read_text(encoding="utf-8"))
+    ir = load_ir_from_json(Path(ir_json))
 
     typer.echo("Generating data...")
     generate_from_ir(ir, out_dir, seed=settings.seed, chunk_rows=settings.chunk_rows)

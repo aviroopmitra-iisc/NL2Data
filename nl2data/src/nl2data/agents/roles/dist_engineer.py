@@ -1,6 +1,6 @@
 """Distribution engineer agent for generation specifications."""
 
-from typing import List
+from typing import List, TYPE_CHECKING
 from nl2data.agents.base import BaseAgent, Blackboard
 from nl2data.agents.tools.llm_client import chat
 from nl2data.agents.tools.json_parser import extract_json, JSONParseError
@@ -9,6 +9,9 @@ from nl2data.prompts.loader import load_prompt, render_prompt
 from nl2data.ir.generation import GenerationIR
 from nl2data.config.logging import get_logger
 from pydantic import ValidationError
+
+if TYPE_CHECKING:
+    from nl2data.ir.validators import QaIssue
 
 logger = get_logger(__name__)
 
@@ -673,6 +676,42 @@ class DistributionEngineer(BaseAgent):
 
     name = "dist_engineer"
 
+    def _repair(self, board: Blackboard, qa_items: List["QaIssue"]) -> Blackboard:
+        """
+        Repair GenerationIR issues found during validation.
+        
+        Uses auto_repair_issues for common issues. For issues that can't be
+        automatically repaired (like MISSING_DERIVED_DEP), the repair loop
+        will eventually fail, allowing the outer retry mechanism to handle it.
+        
+        Args:
+            board: Current blackboard state
+            qa_items: List of QaIssue objects from validation
+            
+        Returns:
+            Updated blackboard with repaired generation_ir
+        """
+        if not board.logical_ir or not board.generation_ir:
+            logger.warning("Cannot repair: missing logical_ir or generation_ir")
+            return board
+        
+        from nl2data.agents.tools.repair import auto_repair_issues
+        
+        logger.info(f"Attempting to repair {len(qa_items)} issues in GenerationIR")
+        repaired_ir = auto_repair_issues(
+            board.logical_ir,
+            board.generation_ir,
+            qa_items
+        )
+        
+        if repaired_ir != board.generation_ir:
+            board.generation_ir = repaired_ir
+            logger.info("GenerationIR repaired successfully")
+        else:
+            logger.warning("Auto-repair could not fix the issues")
+        
+        return board
+
     def run(self, board: Blackboard) -> Blackboard:
         """
         Generate GenerationIR from RequirementIR and LogicalIR.
@@ -906,37 +945,19 @@ class DistributionEngineer(BaseAgent):
                             ]
                             
                             if critical_issues:
-                                # Format error message for retry
+                                # Format error message for logging
                                 issue_summary = "; ".join([
                                     f"{issue.code}" for issue in critical_issues[:3]
                                 ])
                                 
-                                # Build detailed error message with actionable guidance
-                                error_parts = [
-                                    f"GenerationIR validation found {len(critical_issues)} critical issue(s): {issue_summary}",
-                                    "",
-                                    "Issue details:"
-                                ]
-                                
-                                for issue in critical_issues[:5]:
-                                    error_parts.append(f"\n- {issue.code} at {issue.location}")
-                                    error_parts.append(f"  Problem: {issue.message}")
-                                    
-                                    # Add helpful suggestions from issue details if available
-                                    if hasattr(issue, 'details') and issue.details:
-                                        details = issue.details
-                                        if 'similar_columns' in details and details['similar_columns']:
-                                            error_parts.append(f"  Suggested fix: Use one of these columns instead: {', '.join(details['similar_columns'])}")
-                                        elif 'available_columns' in details and details['available_columns']:
-                                            error_parts.append(f"  Available columns: {', '.join(details['available_columns'][:10])}")
-                                
-                                error_msg = "\n".join(error_parts)
-                                
                                 logger.warning(
-                                    f"GenerationIR validation found {len(critical_issues)} critical issues: {issue_summary}"
+                                    f"GenerationIR validation found {len(critical_issues)} critical issues: {issue_summary}. "
+                                    f"These will be handled by the orchestrator's repair loop if enabled."
                                 )
-                                # Raise ValueError to trigger retry mechanism
-                                raise ValueError(error_msg)
+                                
+                                # Don't raise exception - let orchestrator's validators catch it
+                                # The orchestrator will use run_with_repair() if the agent implements _repair()
+                                # Otherwise, it will raise after validation
                             else:
                                 # Non-critical issues - log warning but continue
                                 issue_summary = "; ".join([

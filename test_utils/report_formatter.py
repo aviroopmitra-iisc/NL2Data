@@ -1,6 +1,6 @@
 """Utilities for formatting evaluation reports."""
 
-from nl2data.evaluation.report_models import EvaluationReport
+from nl2data.evaluation import EvaluationReport
 
 
 def format_evaluation_report_markdown(report: EvaluationReport, query_num: int) -> str:

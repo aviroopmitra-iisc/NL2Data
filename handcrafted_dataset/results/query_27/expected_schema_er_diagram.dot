@@ -1,0 +1,16 @@
+// ER Diagram
+digraph {
+	rankdir=TB
+	node [shape=plaintext style="rounded,filled"]
+	graph [nodesep=1.0 ranksep=1.5 splines=polyline]
+	edge [arrowsize=0.8]
+	customer [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">customer</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>customer_id</B></TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	card [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">card</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>card_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">customer_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	merchant [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">merchant</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>merchant_id</B></TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	device [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">device</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>device_id</B></TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	transaction [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">transaction</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>transaction_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">card_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">merchant_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">device_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">amount</TD><TD ALIGN="LEFT">FLOAT</TD></TR><TR><TD ALIGN="LEFT">transaction_ts</TD><TD ALIGN="LEFT">DATETIME</TD></TR><TR><TD ALIGN="LEFT">is_fraud</TD><TD ALIGN="LEFT">BOOL</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	card -> customer [label=customer_id arrowhead=crow color=black style=dashed]
+	transaction -> card [label=card_id arrowhead=crow color=black style=dashed]
+	transaction -> merchant [label=merchant_id arrowhead=crow color=black style=dashed]
+	transaction -> device [label=device_id arrowhead=crow color=black style=dashed]
+}

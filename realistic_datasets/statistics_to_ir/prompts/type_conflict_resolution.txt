@@ -1,0 +1,90 @@
+## Goal
+
+You are analyzing a database column to determine its true semantic type when it appears in both numeric and categorical statistical analysis. Your task is to determine whether the column should be treated as numeric or categorical for data generation purposes.
+
+## Input Structure
+
+The input will be provided as JSON with the following structure:
+
+```json
+{
+  "table_name": "string",
+  "column_name": "string",
+  "sql_type": "INT | FLOAT | TEXT | DATE | DATETIME | BOOL",
+  "numeric_summary": {
+    "mean": number,
+    "std": number,
+    "min": number,
+    "max": number,
+    "distribution_fit": {
+      "best_fit": "string",
+      "best_pvalue": number
+    }
+  },
+  "categorical_summary": {
+    "cardinality": number,
+    "top_1_share": number,
+    "top_5_share": number,
+    "value_counts": {
+      "value1": count1,
+      "value2": count2,
+      ...
+    }
+  }
+}
+```
+
+## Output Structure
+
+You must respond with valid JSON in the following structure:
+
+```json
+{
+  "decision": "numeric" | "categorical",
+  "reasoning": "string"
+}
+```
+
+Where:
+- `decision`: Either "numeric" or "categorical" indicating the true semantic type
+- `reasoning`: A brief explanation of why this decision was made
+
+## Other Information
+
+### Context
+
+The column appears in both numeric and categorical analysis, which indicates ambiguity. This can happen when:
+- Numeric values are stored as strings (e.g., "Population" column with string values like "1000000")
+- Categorical codes that happen to be numeric (e.g., "CountryCode" with values like "USA", "CHN")
+- Mixed data types in the same column
+
+### Decision Criteria
+
+1. **Choose "numeric"** when:
+   - The column represents a measurable quantity (population, price, age, etc.)
+   - Values are stored as strings but are semantically numeric
+   - The numeric distribution fit is meaningful (e.g., lognormal for income, normal for measurements)
+   - Example: "Population" stored as "1000000" (string) but represents a number
+
+2. **Choose "categorical"** when:
+   - The column represents categories, codes, or labels
+   - Values are identifiers rather than measurements
+   - The cardinality is relatively low (< 1000) and values are distinct categories
+   - Example: "CountryCode" with values "USA", "CHN", "IND"
+
+### Examples
+
+**Example 1:**
+- Column: "Population"
+- SQL Type: "TEXT"
+- Numeric stats show meaningful distribution (lognormal fit)
+- Categorical stats show high cardinality
+- **Decision**: "numeric" (values are semantically numbers, just stored as strings)
+
+**Example 2:**
+- Column: "CountryCode"
+- SQL Type: "TEXT"
+- Numeric stats exist but values are codes like "USA", "CHN"
+- Categorical stats show low cardinality (232 unique codes)
+- **Decision**: "categorical" (these are identifiers, not measurements)
+

@@ -1,0 +1,17 @@
+// ER Diagram
+digraph {
+	rankdir=TB
+	node [shape=plaintext style="rounded,filled"]
+	graph [nodesep=1.0 ranksep=1.5 splines=polyline]
+	edge [arrowsize=0.8]
+	metric_timeseries [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">metric_timeseries</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>tenant_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT"><B>metric_name</B></TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT"><B>timestamp</B></TD><TD ALIGN="LEFT">DATETIME</TD></TR><TR><TD ALIGN="LEFT">value</TD><TD ALIGN="LEFT">FLOAT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	incident [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">incident</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>incident_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">tenant_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">region_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">start_ts</TD><TD ALIGN="LEFT">DATETIME</TD></TR><TR><TD ALIGN="LEFT">end_ts</TD><TD ALIGN="LEFT">DATETIME</TD></TR><TR><TD ALIGN="LEFT">incident_type</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	dim_tenant [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">dim_tenant</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>tenant_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">tenant_name</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">plan_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">region_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	dim_region [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">dim_region</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>region_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">region_name</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	dim_plan [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">dim_plan</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>plan_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">plan_name</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	metric_timeseries -> dim_tenant [label=tenant_id arrowhead=crow color=black style=dashed]
+	incident -> dim_tenant [label=tenant_id arrowhead=crow color=black style=dashed]
+	incident -> dim_region [label=region_id arrowhead=crow color=black style=dashed]
+	dim_tenant -> dim_plan [label=plan_id arrowhead=crow color=black style=dashed]
+	dim_tenant -> dim_region [label=region_id arrowhead=crow color=black style=dashed]
+}

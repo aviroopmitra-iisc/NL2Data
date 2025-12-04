@@ -1,0 +1,19 @@
+// ER Diagram
+digraph {
+	rankdir=TB
+	node [shape=plaintext style="rounded,filled"]
+	graph [nodesep=1.0 ranksep=1.5 splines=polyline]
+	edge [arrowsize=0.8]
+	events [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">events</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>event_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">student_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">content_item_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">course_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">instructor_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">action</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">timestamp</TD><TD ALIGN="LEFT">DATETIME</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	student [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">student</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>student_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">skill_level</TD><TD ALIGN="LEFT">FLOAT</TD></TR><TR><TD ALIGN="LEFT">learning_profile</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	course [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">course</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>course_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">course_name</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	content_item [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">content_item</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>content_item_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">difficulty_level</TD><TD ALIGN="LEFT">FLOAT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	instructor [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">instructor</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>instructor_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">instructor_name</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	intervention [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">intervention</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>intervention_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">student_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">content_item_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">timestamp</TD><TD ALIGN="LEFT">DATETIME</TD></TR><TR><TD ALIGN="LEFT">intervention_type</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	events -> student [label=student_id arrowhead=crow color=black style=dashed]
+	events -> content_item [label=content_item_id arrowhead=crow color=black style=dashed]
+	events -> course [label=course_id arrowhead=crow color=black style=dashed]
+	events -> instructor [label=instructor_id arrowhead=crow color=black style=dashed]
+	intervention -> student [label=student_id arrowhead=crow color=black style=dashed]
+	intervention -> content_item [label=content_item_id arrowhead=crow color=black style=dashed]
+}

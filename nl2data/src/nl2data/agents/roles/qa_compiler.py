@@ -66,11 +66,42 @@ class QACompilerAgent(BaseAgent):
             # Attempt automatic repair for common issues
             repair_attempts = 0
             repair_success = False
+            
+            # Repair logical issues (e.g., missing row_count)
+            if logical_issues:
+                from nl2data.agents.tools.repair import repair_missing_row_counts
+                
+                issue_codes = {issue.code for issue in logical_issues}
+                if "MISSING_ROW_COUNT" in issue_codes:
+                    logger.info("QACompilerAgent: Attempting automatic repair of missing row_count issues")
+                    repaired_logical_ir = repair_missing_row_counts(
+                        board.logical_ir,
+                        board.requirement_ir
+                    )
+                    
+                    if repaired_logical_ir != board.logical_ir:
+                        # Store original issue count before repair
+                        original_issue_count = len(all_issues)
+                        
+                        board.logical_ir = repaired_logical_ir
+                        dataset.logical = repaired_logical_ir
+                        
+                        # Re-validate logical issues
+                        logical_issues = validate_logical(dataset)
+                        all_issues = logical_issues + generation_issues + derived_issues
+                        repair_attempts += 1
+                        repair_success = len(all_issues) < original_issue_count
+                        
+                        logger.info(
+                            f"QACompilerAgent: After row_count repair, {len(logical_issues)} logical issues remain"
+                        )
+            
+            # Repair generation issues
             if generation_issues:
                 from nl2data.agents.tools.repair import auto_repair_issues
                 
                 logger.info("QACompilerAgent: Attempting automatic repair of generation issues")
-                repair_attempts = 1
+                repair_attempts += 1
                 repaired_generation_ir = auto_repair_issues(
                     board.logical_ir,
                     board.generation_ir,
@@ -88,10 +119,11 @@ class QACompilerAgent(BaseAgent):
                     all_issues = logical_issues + generation_issues + derived_issues
                     
                     # Check if repair improved things
-                    repair_success = len(all_issues) < (len(logical_issues) + len(generation_issues) + len(derived_issues))
+                    if not repair_success:
+                        repair_success = len(all_issues) < (len(logical_issues) + len(generation_issues) + len(derived_issues))
                     
                     logger.info(
-                        f"QACompilerAgent: After repair, {len(all_issues)} issues remain "
+                        f"QACompilerAgent: After generation repair, {len(all_issues)} issues remain "
                         f"(repair success: {repair_success})"
                     )
             

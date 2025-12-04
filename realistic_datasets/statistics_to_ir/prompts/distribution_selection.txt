@@ -1,0 +1,129 @@
+## Goal
+
+You are selecting the most appropriate probability distribution for generating synthetic data for a numeric column when multiple distribution fits have similar statistical quality (p-values). Your task is to choose the distribution that best matches both statistical properties and semantic meaning.
+
+## Input Structure
+
+The input will be provided as JSON with the following structure:
+
+```json
+{
+  "table_name": "string",
+  "column_name": "string",
+  "column_type": "INT | FLOAT",
+  "statistical_properties": {
+    "mean": number,
+    "std": number,
+    "skewness": number,
+    "kurtosis": number,
+    "min": number,
+    "max": number
+  },
+  "distribution_fits": [
+    {
+      "name": "uniform | normal | lognormal | pareto | exponential | poisson",
+      "p_value": number,
+      "parameters": {
+        // Distribution-specific parameters
+        // For uniform: {"low": number, "high": number}
+        // For normal: {"mean": number, "std": number}
+        // For lognormal: {"shape": number, "scale": number}
+        // For pareto: {"alpha": number, "scale": number}
+        // For exponential: {"scale": number}
+        // For poisson: {"lambda": number}
+      }
+    },
+    ...
+  ]
+}
+```
+
+## Output Structure
+
+You must respond with valid JSON in the following structure:
+
+```json
+{
+  "selected_distribution": "uniform | normal | lognormal | pareto | exponential | poisson",
+  "reasoning": "string",
+  "parameters": {
+    // Adjusted parameters for the selected distribution
+    // Must match the distribution type's required parameters
+  }
+}
+```
+
+Where:
+- `selected_distribution`: The name of the chosen distribution type
+- `reasoning`: Explanation of why this distribution was selected over alternatives
+- `parameters`: The distribution parameters, adjusted if necessary for practical generation
+
+## Other Information
+
+### Context
+
+When multiple distributions fit the data with similar statistical quality (similar p-values), we need to consider:
+- Statistical fit quality (p-value)
+- Semantic meaning of the column (what does it represent?)
+- Practical generation requirements (boundedness, positivity, etc.)
+
+### Distribution Characteristics
+
+1. **Uniform**: Equal probability across a range
+   - Use for: IDs, random selections, bounded ranges
+   - Parameters: `low`, `high`
+
+2. **Normal**: Bell curve, symmetric
+   - Use for: Measurements, errors, natural phenomena
+   - Parameters: `mean`, `std`
+
+3. **Lognormal**: Right-skewed, positive values
+   - Use for: Income, prices, sizes, anything with multiplicative effects
+   - Parameters: `mean` (of underlying normal), `sigma` (std of underlying normal)
+
+4. **Pareto**: Heavy-tailed, power law
+   - Use for: Wealth distribution, file sizes, extreme values
+   - Parameters: `alpha` (shape), `xm` (scale/minimum)
+
+5. **Exponential**: Memoryless, inter-arrival times
+   - Use for: Waiting times, durations, decay processes
+   - Parameters: `scale` (1/lambda)
+
+6. **Poisson**: Count data, discrete
+   - Use for: Event counts, arrivals, discrete occurrences
+   - Parameters: `lam` (lambda, rate)
+
+### Selection Criteria
+
+1. **Semantic Fit**: Does the distribution match what the column represents?
+   - Income → Lognormal
+   - Age → Normal (for adults) or Uniform (for IDs)
+   - Counts → Poisson
+   - Prices → Lognormal or Pareto
+
+2. **Statistical Quality**: Prefer higher p-value when semantically appropriate
+
+3. **Practical Constraints**:
+   - If column must be positive → Avoid Normal (unless mean >> std)
+   - If column is bounded → Consider Uniform or bounded versions
+   - If column is discrete → Prefer Poisson or discrete distributions
+
+4. **Skewness Consideration**:
+   - High positive skew → Lognormal or Pareto
+   - Symmetric → Normal
+   - No skew → Uniform or Normal
+
+### Examples
+
+**Example 1:**
+- Column: "SurfaceArea"
+- Fits: Lognormal (p=0.005), Normal (p=2.5e-30)
+- Skewness: 5.6 (highly right-skewed)
+- **Decision**: Lognormal (area values are positive and right-skewed)
+
+**Example 2:**
+- Column: "ID"
+- Fits: Uniform (p=1.0), Normal (p=4.2e-12)
+- Skewness: 0.0
+- **Decision**: Uniform (IDs should be uniformly distributed)
+

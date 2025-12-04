@@ -1,0 +1,187 @@
+## Goal
+
+You are inferring an appropriate distribution and provider for a column that has no statistical analysis available (missing data, new column, or insufficient samples). Your task is to infer the most appropriate generation specification based on schema context, column metadata, and relationships with other columns.
+
+## Input Structure
+
+The input will be provided as JSON with the following structure:
+
+```json
+{
+  "table_name": "string",
+  "column_name": "string",
+  "column_metadata": {
+    "sql_type": "INT | FLOAT | TEXT | DATE | DATETIME | BOOL",
+    "nullable": boolean,
+    "unique": boolean,
+    "role": "primary_key | foreign_key | attribute | measure | null",
+    "references": "table.column | null"
+  },
+  "related_columns": [
+    {
+      "name": "string",
+      "sql_type": "string",
+      "role": "string | null"
+    },
+    ...
+  ],
+  "related_fds": [
+    {
+      "table": "string",
+      "lhs": ["string", ...],
+      "rhs": ["string", ...]
+    },
+    ...
+  ],
+  "full_schema": {
+    "tables": {
+      "table_name": {
+        "name": "string",
+        "columns": [...],
+        "primary_key": ["string", ...],
+        "foreign_keys": [...]
+      },
+      ...
+    },
+    "constraints": {
+      "fds": [...]
+    }
+  }
+}
+```
+
+## Output Structure
+
+You must respond with valid JSON in the following structure:
+
+```json
+{
+  "distribution": {
+    "kind": "uniform | normal | lognormal | categorical | zipf | ...",
+    // Distribution-specific parameters based on kind
+  },
+  "provider": {
+    "name": "string | null",
+    "config": {}
+  } | null,
+  "reasoning": "string"
+}
+```
+
+Where:
+- `distribution`: Complete distribution specification with kind and parameters
+- `provider`: Provider reference if applicable, null otherwise
+- `reasoning`: Explanation of the inference
+
+## Other Information
+
+### Context
+
+When statistics are missing, we must infer from:
+- Column name semantics (e.g., "population" → numeric, "city_name" → categorical)
+- SQL type (INT/FLOAT → numeric, TEXT → categorical)
+- Column role (primary_key → uniform, foreign_key → lookup, measure → numeric distribution)
+- Relationships (foreign keys, functional dependencies)
+- Related columns in the same table
+
+### Inference Rules by Column Type
+
+**INT/FLOAT Columns:**
+
+1. **Primary Keys:**
+   - Distribution: `{"kind": "uniform", "low": 1.0, "high": <estimated_max>}`
+   - Provider: null
+
+2. **Foreign Keys:**
+   - Distribution: null (will use lookup)
+   - Provider: `{"name": "lookup.{ref_table}.{ref_column}", "config": {}}`
+
+3. **Measures/Attributes:**
+   - Distribution: `{"kind": "normal", "mean": <reasonable_default>, "std": <reasonable_default>}`
+   - Or: `{"kind": "lognormal", "mean": 3.0, "sigma": 1.0}` for positive values
+   - Provider: null
+
+**TEXT Columns:**
+
+1. **Primary Keys:**
+   - Distribution: `{"kind": "categorical", "domain": {"values": [], "probs": null}}`
+   - Provider: null (or faker if name suggests it)
+
+2. **Foreign Keys:**
+   - Distribution: null
+   - Provider: `{"name": "lookup.{ref_table}.{ref_column}", "config": {}}`
+
+3. **Names/Addresses:**
+   - Distribution: `{"kind": "categorical", "domain": {"values": ["fake_value"], "probs": null}}`
+   - Provider: Based on column name:
+     - "city", "city_name" → `faker.city`
+     - "country", "country_name" → `faker.country`
+     - "name", "full_name" → `faker.name`
+     - "email" → `faker.email`
+     - "address" → `faker.address`
+
+4. **Generic Attributes:**
+   - Distribution: `{"kind": "categorical", "domain": {"values": ["fake_value"], "probs": null}}`
+   - Provider: null (or infer from name)
+
+**DATE/DATETIME Columns:**
+
+- Distribution: `{"kind": "uniform", "low": <start_timestamp>, "high": <end_timestamp>}`
+- Provider: `faker.date` if appropriate
+
+**BOOL Columns:**
+
+- Distribution: `{"kind": "categorical", "domain": {"values": ["true", "false"], "probs": [0.5, 0.5]}}`
+- Provider: null
+
+### Column Name Patterns
+
+Infer from common naming patterns:
+- "*_id", "*_code" → Likely foreign key or identifier
+- "*_name", "*_title" → Likely categorical, consider provider
+- "*_count", "*_total", "*_amount", "*_price" → Likely numeric measure
+- "*_date", "*_time" → Temporal
+- "*_flag", "*_status" → Likely boolean or categorical
+
+### Functional Dependency Considerations
+
+If column is in RHS of FD:
+- The distribution should respect the FD constraint
+- For lookup FDs, use lookup provider
+- For intra-row FDs, ensure distribution allows unique values per LHS
+
+### Examples
+
+**Example 1:**
+- Column: "customer_id"
+- Type: INT
+- Role: primary_key
+- **Inference**: 
+  - Distribution: `{"kind": "uniform", "low": 1.0, "high": 1000000.0}`
+  - Provider: null
+
+**Example 2:**
+- Column: "country_code"
+- Type: TEXT
+- Role: foreign_key
+- References: "countries.country_code"
+- **Inference**:
+  - Distribution: null
+  - Provider: `{"name": "lookup.countries.country_code", "config": {}}`
+
+**Example 3:**
+- Column: "city_name"
+- Type: TEXT
+- Role: attribute
+- **Inference**:
+  - Distribution: `{"kind": "categorical", "domain": {"values": ["fake_city"], "probs": null}}`
+  - Provider: `{"name": "faker.city", "config": {}}`
+
+**Example 4:**
+- Column: "revenue"
+- Type: FLOAT
+- Role: measure
+- **Inference**:
+  - Distribution: `{"kind": "lognormal", "mean": 10.0, "sigma": 1.5}`
+  - Provider: null
+

@@ -1,0 +1,16 @@
+// ER Diagram
+digraph {
+	rankdir=TB
+	node [shape=plaintext style="rounded,filled"]
+	graph [nodesep=1.0 ranksep=1.5 splines=polyline]
+	edge [arrowsize=0.8]
+	sensor_reading [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">sensor_reading</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>reading_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">timestamp</TD><TD ALIGN="LEFT">DATETIME</TD></TR><TR><TD ALIGN="LEFT">temperature</TD><TD ALIGN="LEFT">FLOAT</TD></TR><TR><TD ALIGN="LEFT">vibration</TD><TD ALIGN="LEFT">FLOAT</TD></TR><TR><TD ALIGN="LEFT">current</TD><TD ALIGN="LEFT">FLOAT</TD></TR><TR><TD ALIGN="LEFT">anomaly_type</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">sensor_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	sensor [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">sensor</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>sensor_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">sensor_name</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">sensor_type_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">plant_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	plant [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">plant</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>plant_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">plant_name</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">location</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	sensor_type [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">sensor_type</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>sensor_type_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">type_name</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">normal_temperature_range</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">normal_vibration_range</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">normal_current_range</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	maintenance_event [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">maintenance_event</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>event_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">sensor_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">event_timestamp</TD><TD ALIGN="LEFT">DATETIME</TD></TR><TR><TD ALIGN="LEFT">description</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	sensor_reading -> sensor [label=sensor_id arrowhead=crow color=black style=dashed]
+	sensor -> sensor_type [label=sensor_type_id arrowhead=crow color=black style=dashed]
+	sensor -> plant [label=plant_id arrowhead=crow color=black style=dashed]
+	maintenance_event -> sensor [label=sensor_id arrowhead=crow color=black style=dashed]
+}

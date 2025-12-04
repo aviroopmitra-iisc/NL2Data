@@ -1,0 +1,188 @@
+## Goal
+
+You are selecting a data provider for realistic value generation. Your task is to determine whether a column should use a provider (faker, mimesis, lookup) instead of pure statistical distribution, and if so, which provider is most appropriate.
+
+## Input Structure
+
+The input will be provided as JSON with the following structure:
+
+```json
+{
+  "table_name": "string",
+  "column_name": "string",
+  "sql_type": "INT | FLOAT | TEXT | DATE | DATETIME | BOOL",
+  "distribution_summary": {
+    "kind": "uniform | normal | lognormal | categorical | zipf | ...",
+    "parameters": {...}
+  },
+  "column_metadata": {
+    "nullable": boolean,
+    "unique": boolean,
+    "role": "primary_key | foreign_key | attribute | measure | null",
+    "references": "table.column | null"
+  },
+  "full_schema": {
+    "tables": {
+      "table_name": {
+        "name": "string",
+        "columns": [
+          {
+            "name": "string",
+            "sql_type": "string",
+            "role": "string | null",
+            "references": "string | null"
+          },
+          ...
+        ],
+        "primary_key": ["string", ...],
+        "foreign_keys": [
+          {
+            "column": "string",
+            "ref_table": "string",
+            "ref_column": "string"
+          },
+          ...
+        ]
+      },
+      ...
+    },
+    "constraints": {
+      "fds": [
+        {
+          "table": "string",
+          "lhs": ["string", ...],
+          "rhs": ["string", ...]
+        },
+        ...
+      ]
+    }
+  }
+}
+```
+
+## Output Structure
+
+You must respond with valid JSON in the following structure:
+
+```json
+{
+  "use_provider": true | false,
+  "provider_name": "string | null",
+  "reasoning": "string"
+}
+```
+
+Where:
+- `use_provider`: Boolean indicating whether to use a provider
+- `provider_name`: Provider identifier if use_provider is true, null otherwise
+  - Format: "faker.{type}" (e.g., "faker.city", "faker.email")
+  - Format: "mimesis.{type}" (e.g., "mimesis.full_name", "mimesis.address")
+  - Format: "lookup.{table}.{column}" (e.g., "lookup.countries.country_code")
+- `reasoning`: Explanation of the decision
+
+## Other Information
+
+### Available Providers
+
+**Faker Providers:**
+- `faker.city` - City names
+- `faker.country` - Country names
+- `faker.country_code` - Country codes (ISO)
+- `faker.name` - Full names
+- `faker.first_name` - First names
+- `faker.last_name` - Last names
+- `faker.email` - Email addresses
+- `faker.phone_number` - Phone numbers
+- `faker.address` - Street addresses
+- `faker.date` - Dates
+- `faker.company` - Company names
+- `faker.job` - Job titles
+- `faker.language_name` - Language names
+
+**Mimesis Providers:**
+- `mimesis.full_name` - Full names
+- `mimesis.address` - Addresses
+- `mimesis.email` - Email addresses
+
+**Lookup Providers:**
+- `lookup.{table}.{column}` - Lookup values from another table's column
+  - Use for foreign keys: ensures referential integrity
+  - Example: `lookup.countries.country_code` for city.country_code
+
+### Decision Criteria
+
+**Use Provider (use_provider = true) when:**
+
+1. **Names, Addresses, Emails:**
+   - Column represents names → `faker.name` or `mimesis.full_name`
+   - Column represents addresses → `faker.address` or `mimesis.address`
+   - Column represents emails → `faker.email` or `mimesis.email`
+   - Column represents cities → `faker.city`
+   - Column represents countries → `faker.country`
+
+2. **Foreign Keys:**
+   - Column has `references` field → Use `lookup.{ref_table}.{ref_column}`
+   - Column role is "foreign_key" → Use lookup provider
+   - Example: If `city.country_code` references `countries.country_code` → `lookup.countries.country_code`
+
+3. **High-Cardinality Categorical:**
+   - Cardinality > 1000 AND column represents real-world entities (cities, names, etc.)
+   - Better to generate realistic values than store huge value lists
+
+**Do NOT Use Provider (use_provider = false) when:**
+
+1. **Numeric Measures:**
+   - Column type is INT or FLOAT and represents measurements
+   - Examples: Population, Price, Age, Quantity
+   - Use statistical distributions instead
+
+2. **Low-Cardinality Categorical:**
+   - Cardinality < 50 and values are specific categories
+   - Better to use explicit categorical distribution
+
+3. **Derived/Computed Columns:**
+   - Column is computed from other columns
+   - Use derived distribution instead
+
+4. **IDs and Codes:**
+   - Primary keys or unique identifiers
+   - Usually use uniform distribution or sequential generation
+
+### Schema Context Usage
+
+The full schema is provided to help you:
+- Identify foreign key relationships (use lookup providers)
+- Understand table structure and relationships
+- Consider functional dependencies (FDs) that might affect provider choice
+- Match column names to semantic meaning (e.g., "city_name" → faker.city)
+
+### Examples
+
+**Example 1:**
+- Column: "city_name"
+- Type: TEXT
+- Role: attribute
+- Distribution: categorical (high cardinality)
+- **Decision**: `use_provider: true, provider_name: "faker.city"`
+
+**Example 2:**
+- Column: "country_code"
+- Type: TEXT
+- Role: foreign_key
+- References: "countries.country_code"
+- **Decision**: `use_provider: true, provider_name: "lookup.countries.country_code"`
+
+**Example 3:**
+- Column: "population"
+- Type: INT
+- Role: measure
+- Distribution: lognormal
+- **Decision**: `use_provider: false, provider_name: null` (numeric measure)
+
+**Example 4:**
+- Column: "email"
+- Type: TEXT
+- Role: attribute
+- Distribution: categorical (high cardinality)
+- **Decision**: `use_provider: true, provider_name: "faker.email"`
+

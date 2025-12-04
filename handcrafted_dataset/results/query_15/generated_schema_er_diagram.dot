@@ -1,0 +1,16 @@
+// ER Diagram
+digraph {
+	rankdir=TB
+	node [shape=plaintext style="rounded,filled"]
+	graph [nodesep=1.0 ranksep=1.5 splines=polyline]
+	edge [arrowsize=0.8]
+	tenant [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">tenant</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>tenant_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">tenant_name</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	cluster [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">cluster</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>cluster_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">cluster_name</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	region [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">region</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>region_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">region_name</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	plan_tier [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">plan_tier</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>plan_tier_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">plan_name</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">slo_latency_threshold_ms</TD><TD ALIGN="LEFT">FLOAT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	metrics_fact [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">metrics_fact</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>timestamp</B></TD><TD ALIGN="LEFT">DATETIME</TD></TR><TR><TD ALIGN="LEFT"><B>tenant_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">cluster_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">region_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">plan_tier_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">metric_name</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">value</TD><TD ALIGN="LEFT">FLOAT</TD></TR><TR><TD ALIGN="LEFT">error_rate_percent</TD><TD ALIGN="LEFT">FLOAT</TD></TR><TR><TD ALIGN="LEFT">latency_spread</TD><TD ALIGN="LEFT">FLOAT</TD></TR><TR><TD ALIGN="LEFT">slo_latency_breached</TD><TD ALIGN="LEFT">BOOL</TD></TR><TR><TD ALIGN="LEFT">cpu_headroom</TD><TD ALIGN="LEFT">FLOAT</TD></TR><TR><TD ALIGN="LEFT">is_overloaded</TD><TD ALIGN="LEFT">BOOL</TD></TR><TR><TD ALIGN="LEFT">chronic_slo_violator</TD><TD ALIGN="LEFT">BOOL</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	metrics_fact -> tenant [label=tenant_id arrowhead=crow color=black style=dashed]
+	metrics_fact -> cluster [label=cluster_id arrowhead=crow color=black style=dashed]
+	metrics_fact -> region [label=region_id arrowhead=crow color=black style=dashed]
+	metrics_fact -> plan_tier [label=plan_tier_id arrowhead=crow color=black style=dashed]
+}

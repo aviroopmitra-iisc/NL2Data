@@ -1,0 +1,10 @@
+// ER Diagram
+digraph {
+	rankdir=TB
+	node [shape=plaintext style="rounded,filled"]
+	graph [nodesep=1.0 ranksep=1.5 splines=polyline]
+	edge [arrowsize=0.8]
+	patient [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">patient</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>patient_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">gender</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">date_of_birth</TD><TD ALIGN="LEFT">DATE</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	encounter [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">encounter</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>encounter_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">patient_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">encounter_start_ts</TD><TD ALIGN="LEFT">DATETIME</TD></TR><TR><TD ALIGN="LEFT">encounter_end_ts</TD><TD ALIGN="LEFT">DATETIME</TD></TR><TR><TD ALIGN="LEFT">encounter_type</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">discharge_disposition</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">length_of_stay_days</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	encounter -> patient [label=patient_id arrowhead=crow color=black style=dashed]
+}

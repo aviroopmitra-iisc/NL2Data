@@ -184,12 +184,14 @@ def _generate_single_chunk(
             )
 
     # Phase 1.7: Enforce constraints
-    if filtered_constraints.fds or filtered_constraints.implications or filtered_constraints.composite_pks:
+    # Get FDs from table.fds (not from constraints.fds)
+    table_fds = table.fds if hasattr(table, 'fds') else []
+    if table_fds or filtered_constraints.implications or filtered_constraints.composite_pks:
         try:
             df_chunk = enforce_batch(
                 df_chunk,
                 filtered_constraints,
-                table_spec=table,
+                table_spec=table,  # FDs are now read from table_spec.fds
             )
         except Exception as e:
             log_error_with_recovery(
@@ -198,7 +200,7 @@ def _generate_single_chunk(
                 context={
                     'chunk_start': chunk_start,
                     'chunk_size': chunk_size,
-                    'fds_count': len(filtered_constraints.fds),
+                    'fds_count': len(table_fds),
                     'implications_count': len(filtered_constraints.implications),
                     'composite_pks_count': len(filtered_constraints.composite_pks)
                 },
@@ -305,11 +307,10 @@ def generate_fact_stream(
     window_cols = derived_reg.window_order.get(table.name, [])
     has_windows = len(window_cols) > 0
     
-    # Filter constraints for this table
+    # Filter constraints for this table (FDs are now in table.fds, not in constraints.fds)
     table_constraints = ir.logical.constraints
     from nl2data.ir.constraint_ir import ConstraintSpec
     filtered_constraints = ConstraintSpec(
-        fds=[fd for fd in table_constraints.fds if fd.table == table.name],
         implications=[impl for impl in table_constraints.implications if impl.table == table.name],
         composite_pks=[cpk for cpk in table_constraints.composite_pks if cpk.table == table.name]
     )

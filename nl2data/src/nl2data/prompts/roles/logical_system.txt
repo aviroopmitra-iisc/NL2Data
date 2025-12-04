@@ -266,26 +266,26 @@ DIMENSION TABLE ATTRIBUTES FOR DERIVED COLUMNS:
 
 **REQUIRED**: When NL mentions constraint-like relationships, add them to the `constraints` field:
 
-The JSON structure supports an optional `constraints` field at the root level:
+The JSON structure supports an optional `constraints` field at the root level for implications and composite PKs:
 ```json
 {
   "tables": { ... },
   "constraints": {
-    "fds": [...],
     "implications": [...],
     "composite_pks": [...]
   }
 }
 ```
 
+**Note**: Functional dependencies (FDs) are now stored per table in each table's `fds` field, not in `constraints.fds`.
+
 ### Functional Dependencies (FDs)
 
 **When NL mentions**: "each X maps to one Y", "X determines Y", "X uniquely identifies Y", "one-to-one relationship"
 
-Add to `constraints.fds`:
+Add to the table's `fds` field (FDs are now stored per table, not in `constraints.fds`):
 ```json
 {
-  "table": "table_name",
   "lhs": ["column1", "column2"],  // Determinant columns
   "rhs": ["column3", "column4"],  // Dependent columns
   "mode": "intra_row"  // or "lookup"
@@ -293,8 +293,8 @@ Add to `constraints.fds`:
 ```
 
 Examples:
-- "each product_id maps to one product_name" → `{"table": "products", "lhs": ["product_id"], "rhs": ["product_name"], "mode": "intra_row"}`
-- "customer_id and order_date together determine order_total" → `{"table": "orders", "lhs": ["customer_id", "order_date"], "rhs": ["order_total"], "mode": "intra_row"}`
+- "each product_id maps to one product_name" → Add to `products` table's `fds`: `{"lhs": ["product_id"], "rhs": ["product_name"], "mode": "intra_row"}`
+- "customer_id and order_date together determine order_total" → Add to `orders` table's `fds`: `{"lhs": ["customer_id", "order_date"], "rhs": ["order_total"], "mode": "intra_row"}`
 
 ### Implication Constraints
 

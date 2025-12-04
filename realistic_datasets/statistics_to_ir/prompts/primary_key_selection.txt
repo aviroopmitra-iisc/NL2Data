@@ -1,0 +1,110 @@
+## Goal
+
+You are selecting a primary key for a database table from a set of candidate keys. Your task is to determine which candidate key is most suitable to serve as the primary key based on the table schema, column characteristics, and database design best practices.
+
+## Input Structure
+
+The input will be provided as JSON with the following structure:
+
+```json
+{
+  "table_name": "string",
+  "table_schema": {
+    "name": "string",
+    "columns": [
+      {
+        "name": "string",
+        "sql_type": "INT | FLOAT | TEXT | DATE | DATETIME | BOOL",
+        "nullable": boolean,
+        "unique": boolean,
+        "role": "primary_key | foreign_key | measure | attribute | null",
+        "references": "table.column | null"
+      }
+    ],
+    "primary_key": ["string"],
+    "foreign_keys": [...]
+  },
+  "candidate_keys": [
+    ["column1"],
+    ["column1", "column2"],
+    ...
+  ],
+  "full_schema": {
+    "tables": {
+      "table_name": {
+        "name": "string",
+        "columns": [...],
+        "primary_key": [...],
+        "foreign_keys": [...]
+      }
+    }
+  }
+}
+```
+
+Where:
+- **table_name**: Name of the table for which we're selecting a primary key
+- **table_schema**: Complete schema of the target table
+- **candidate_keys**: List of candidate key sets (each set is a list of column names)
+- **full_schema**: Complete schema of all tables in the database (for context)
+
+## Output Structure
+
+You must respond with a JSON object matching this structure:
+
+```json
+{
+  "selected_primary_key": ["column1"] or ["column1", "column2"],
+  "reasoning": "string explaining why this candidate key was selected",
+  "confidence": 0.0 to 1.0
+}
+```
+
+Where:
+- **selected_primary_key**: The candidate key chosen as primary key (list of column names)
+- **reasoning**: Explanation of the selection rationale
+- **confidence**: Confidence level in the selection (0.0 to 1.0)
+
+## Other Information
+
+### Primary Key Selection Criteria
+
+When selecting a primary key from candidate keys, consider:
+
+1. **Minimality**: Prefer smaller candidate keys (fewer columns) when possible
+2. **Stability**: Prefer columns that are unlikely to change (avoid columns that might be updated)
+3. **Simplicity**: Single-column keys are generally preferred over composite keys
+4. **Semantic Meaning**: Prefer keys that have clear semantic meaning (e.g., "ID", "code", "name" patterns)
+5. **Existing Design**: If the table already has a primary_key set, consider whether it matches any candidate key
+6. **Foreign Key Relationships**: Consider which columns are referenced by other tables
+7. **Data Type**: INT or TEXT columns are typically better than FLOAT or DATE for primary keys
+8. **Uniqueness**: All candidate keys are functionally equivalent, but some may be more intuitive
+
+### Examples
+
+**Example 1:**
+- Table: "city"
+- Candidate Keys: [["ID"], ["Name", "CountryCode"]]
+- **Selection**: ["ID"]
+- **Reasoning**: Single-column integer key is simpler and more efficient than composite key
+
+**Example 2:**
+- Table: "order_items"
+- Candidate Keys: [["order_id", "line_no"], ["order_id", "product_id"]]
+- **Selection**: ["order_id", "line_no"]
+- **Reasoning**: Line number is a more natural ordering attribute than product_id for order items
+
+**Example 3:**
+- Table: "country"
+- Candidate Keys: [["Code"], ["Name"]]
+- **Selection**: ["Code"]
+- **Reasoning**: Country codes are standardized, stable identifiers, while names might vary
+
+### Important Notes
+
+- All candidate keys are functionally equivalent (they all determine all other columns)
+- Choose the one that best fits database design principles and the specific use case
+- If multiple candidate keys are equally good, prefer the one that matches existing primary_key if set
+- Consider the broader schema context when making the decision
+- If no candidate key is clearly better, choose the smallest one
+

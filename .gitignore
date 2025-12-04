@@ -77,15 +77,37 @@ logs/
 **/test_output/**/*.csv
 **/test_output/**/*.parquet
 **/test_output/**/dataset_ir.json
+# Data files (CSV, TSV, TBL)
+*.csv
+*.tsv
+*.tbl
 # Log files
 *.log
 # JSONL files (often contain generated or sensitive data)
 *.jsonl
+# Generated JSON files (evaluation results, statistics, IRs)
+**/results/**/*.json
+**/statistics.json
+**/discovered_fds.json
+**/generation_ir.json
+**/original_ir.json
+**/metadata.json
+**/pipeline_run_summary.json
+**/categorical_llm_analysis.json
+**/evaluation_report.md
+# Generated description files
+**/description_*.txt
+# SQL dump files
+*.sql
 
 # UI Streamlit specific
 ui_streamlit/generated_data/
 ui_streamlit/output/
 .streamlit/
+
+# Realistic Datasets (generated data for testing)
+realistic_datasets/data/
+realistic_datasets/**/data/
 
 # Test Coverage
 .coverage
@@ -149,10 +171,10 @@ $RECYCLE.BIN/
 *.swp
 *~
 
-# Large files (uncomment if needed)
-# *.pdf
-# *.zip
-# *.tar.gz
+# Large files
+*.pdf
+*.zip
+*.tar.gz
 
 # Database files
 *.db
@@ -166,4 +188,22 @@ $RECYCLE.BIN/
 # Annotation files (if they contain sensitive data)
 # annotation.jsonl
 
-*.pdf
+# Reports and Documentation (generated files)
+final_report/
+*.md
+!PROJECT_OVERVIEW.md
+
+# LaTeX auxiliary files
+*.aux
+*.log
+*.out
+*.nav
+*.snm
+*.toc
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+*.bbl
+*.blg
+*.bcf
+*.run.xml

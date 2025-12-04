@@ -1,0 +1,20 @@
+// ER Diagram
+digraph {
+	rankdir=TB
+	node [shape=plaintext style="rounded,filled"]
+	graph [nodesep=1.0 ranksep=1.5 splines=polyline]
+	edge [arrowsize=0.8]
+	members [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">members</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>member_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">name</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">tier</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	items [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">items</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>isbn</B></TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">title</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">author</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">subject</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	copies [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">copies</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>copy_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">isbn (FK)</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">status</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	loans [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">loans</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>loan_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">member_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">copy_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">status</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">due_date</TD><TD ALIGN="LEFT">DATETIME</TD></TR><TR><TD ALIGN="LEFT">return_date</TD><TD ALIGN="LEFT">DATETIME</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	holds [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">holds</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>hold_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">member_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">copy_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">status</TD><TD ALIGN="LEFT">TEXT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	fines [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">fines</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>fine_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">member_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">amount</TD><TD ALIGN="LEFT">FLOAT</TD></TR><TR><TD ALIGN="LEFT">accrual_date</TD><TD ALIGN="LEFT">DATETIME</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	events [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">events</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>event_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">event_type</TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">start_date</TD><TD ALIGN="LEFT">DATETIME</TD></TR><TR><TD ALIGN="LEFT">end_date</TD><TD ALIGN="LEFT">DATETIME</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	copies -> items [label=isbn arrowhead=crow color=black style=dashed]
+	loans -> members [label=member_id arrowhead=crow color=black style=dashed]
+	loans -> copies [label=copy_id arrowhead=crow color=black style=dashed]
+	holds -> members [label=member_id arrowhead=crow color=black style=dashed]
+	holds -> copies [label=copy_id arrowhead=crow color=black style=dashed]
+	fines -> members [label=member_id arrowhead=crow color=black style=dashed]
+}

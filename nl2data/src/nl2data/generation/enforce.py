@@ -195,19 +195,28 @@ def enforce_batch(
 
     Args:
         df: DataFrame to enforce constraints on
-        constraints: ConstraintSpec with all constraints
-        table_spec: Optional TableSpec for nullability enforcement
+        constraints: ConstraintSpec with all constraints (FDs are now in table_spec.fds)
+        table_spec: Optional TableSpec for nullability enforcement and FDs
 
     Returns:
         DataFrame with all constraints enforced
     """
     result = df.copy()
 
-    # Enforce FDs
-    for fd in constraints.fds:
-        if fd.mode == "intra_row":
-            result = enforce_intra_fd(result, fd)
-        # mode="lookup" FDs are checked post-generation, not enforced here
+    # Enforce FDs from table_spec.fds (not from constraints.fds)
+    if table_spec and hasattr(table_spec, 'fds'):
+        from nl2data.ir.constraint_ir import FDConstraint
+        for table_fd in table_spec.fds:
+            # Convert TableFDConstraint to FDConstraint for enforce_intra_fd
+            fd = FDConstraint(
+                table=table_spec.name,
+                lhs=table_fd.lhs,
+                rhs=table_fd.rhs,
+                mode=table_fd.mode
+            )
+            if fd.mode == "intra_row":
+                result = enforce_intra_fd(result, fd)
+            # mode="lookup" FDs are checked post-generation, not enforced here
 
     # Enforce implications
     for impl in constraints.implications:

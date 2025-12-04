@@ -48,7 +48,8 @@ IMPORTANT REQUIREMENTS:
    - You can reference columns from the same table directly (e.g., "unit_price * quantity")
    - You can reference columns from dimension tables that are joined via foreign keys (e.g., "dynamic_price / baseline_price" where baseline_price is in dim_tariff_plan)
    - You CANNOT reference columns from other fact tables (cross-fact-table references not supported)
-   - You CANNOT use window functions like LAG() or LEAD() (temporal dependencies requiring previous rows not supported)
-   - For temporal dependencies, use helper columns or avoid patterns that need previous row values
+   - ⚠️ **CRITICAL**: Window functions like `lag()` and `lead()` are FORBIDDEN in derived expressions, but ALLOWED in window distribution specs
+   - For temporal dependencies (lag/lead), use `{{"kind": "window", "expression": "lag(amount, 1)", ...}}` NOT derived expressions
+   - For per-row computations, use derived expressions (NO lag/lead here)
 
 Design generation specifications for all columns as JSON following the structure described in the system prompt.

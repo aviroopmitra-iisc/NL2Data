@@ -1,0 +1,14 @@
+// ER Diagram
+digraph {
+	rankdir=TB
+	node [shape=plaintext style="rounded,filled"]
+	graph [nodesep=1.0 ranksep=1.5 splines=polyline]
+	edge [arrowsize=0.8]
+	customer [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#7CB342" COLSPAN="2"><B><FONT COLOR="white">customer</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>customer_id</B></TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#7CB342" fillcolor="#F0F8E8" style="rounded,filled"]
+	contract [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">contract</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>contract_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">customer_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">start_date</TD><TD ALIGN="LEFT">DATE</TD></TR><TR><TD ALIGN="LEFT">end_date</TD><TD ALIGN="LEFT">DATE</TD></TR><TR><TD ALIGN="LEFT">committed_monthly_units</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	usage_daily [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">usage_daily</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>usage_date</B></TD><TD ALIGN="LEFT">DATE</TD></TR><TR><TD ALIGN="LEFT"><B>contract_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT"><B>endpoint</B></TD><TD ALIGN="LEFT">TEXT</TD></TR><TR><TD ALIGN="LEFT">units_used</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	invoice [label=<<TABLE BORDER="2" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD BGCOLOR="#4A90E2" COLSPAN="2"><B><FONT COLOR="white">invoice</FONT></B></TD></TR><TR><TD ALIGN="LEFT"><B>invoice_id</B></TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">contract_id (FK)</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">invoice_date</TD><TD ALIGN="LEFT">DATE</TD></TR><TR><TD ALIGN="LEFT">billed_units</TD><TD ALIGN="LEFT">INT</TD></TR><TR><TD ALIGN="LEFT">overage_units</TD><TD ALIGN="LEFT">INT</TD></TR></TABLE>> color="#4A90E2" fillcolor="#E8F4F8" style="rounded,filled"]
+	contract -> customer [label=customer_id arrowhead=crow color=black style=dashed]
+	usage_daily -> contract [label=contract_id arrowhead=crow color=black style=dashed]
+	invoice -> contract [label=contract_id arrowhead=crow color=black style=dashed]
+}

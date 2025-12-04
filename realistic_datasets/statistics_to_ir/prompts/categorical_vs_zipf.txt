@@ -1,0 +1,126 @@
+## Goal
+
+You are deciding whether a categorical column should use an explicit categorical distribution (with value list and probabilities) or a Zipf (power-law) distribution for data generation. Your task is to select the most appropriate distribution type based on cardinality, value distribution patterns, and practical generation requirements.
+
+## Input Structure
+
+The input will be provided as JSON with the following structure:
+
+```json
+{
+  "table_name": "string",
+  "column_name": "string",
+  "categorical_stats": {
+    "cardinality": number,
+    "top_1_share": number,
+    "top_5_share": number,
+    "top_10_values": {
+      "value1": count1,
+      "value2": count2,
+      ...
+    },
+    "value_counts": {
+      "value1": count1,
+      "value2": count2,
+      ...
+    }
+  },
+  "zipf_fit": {
+    "s": number | null,
+    "n": number | null,
+    "fit_quality": number | null
+  } | null
+}
+```
+
+## Output Structure
+
+You must respond with valid JSON in the following structure:
+
+```json
+{
+  "distribution_type": "categorical" | "zipf",
+  "parameters": {
+    // If categorical:
+    "values": ["string", ...],
+    "probs": [number, ...] | null
+    
+    // If zipf:
+    "s": number,
+    "n": number
+  },
+  "reasoning": "string"
+}
+```
+
+Where:
+- `distribution_type`: Either "categorical" or "zipf"
+- `parameters`: Distribution-specific parameters
+  - For categorical: `values` (list of all unique values), `probs` (normalized probabilities, null if uniform)
+  - For zipf: `s` (Zipf exponent, typically 1.0-2.0), `n` (domain size/cardinality)
+- `reasoning`: Explanation of the decision
+
+## Other Information
+
+### Context
+
+Categorical columns can be represented in two ways:
+1. **Categorical Distribution**: Explicit list of all values with their probabilities
+   - Good for: Low cardinality, specific value sets, when exact probabilities matter
+   - Memory: O(n) where n = cardinality
+
+2. **Zipf Distribution**: Power-law distribution (rank-based probabilities)
+   - Good for: High cardinality, skewed distributions, when values follow power-law
+   - Memory: O(1) - only stores parameters
+
+### Decision Criteria
+
+**Choose "categorical" when:**
+- Cardinality < 50: Small enough to store all values explicitly
+- Cardinality < 1000 AND top_1_share < 0.1: Relatively uniform distribution
+- Exact value probabilities are important for the use case
+- Values are not naturally rankable (e.g., country names, not IDs)
+
+**Choose "zipf" when:**
+- Cardinality > 1000: Too many values to store explicitly
+- Cardinality > 100 AND top_1_share > 0.1: Strong skew indicates power-law
+- Values follow a natural ranking (e.g., popularity, frequency)
+- Zipf fit is available and has good quality (s parameter exists)
+
+### Zipf Distribution Details
+
+- **s parameter (exponent)**: Controls skewness
+  - s ≈ 1.0: Moderate skew
+  - s ≈ 1.5: High skew
+  - s ≈ 2.0: Very high skew
+- **n parameter**: Domain size (cardinality)
+- **Probability of rank k**: P(k) ∝ 1/k^s
+
+### Examples
+
+**Example 1:**
+- Column: "Continent"
+- Cardinality: 7
+- Top 1 share: 0.24
+- **Decision**: "categorical" (low cardinality, can store all values)
+
+**Example 2:**
+- Column: "CountryCode" (in a large dataset)
+- Cardinality: 232
+- Top 1 share: 0.089
+- Top 5 share: 0.36
+- **Decision**: "categorical" (moderate cardinality, not extremely skewed)
+
+**Example 3:**
+- Column: "CityName"
+- Cardinality: 4001
+- Top 1 share: 0.0007
+- **Decision**: "zipf" (very high cardinality, even if not extremely skewed)
+
+**Example 4:**
+- Column: "Language"
+- Cardinality: 458
+- Top 1 share: 0.061
+- Zipf fit available: s=1.2
+- **Decision**: "zipf" (moderate-high cardinality with power-law pattern)
+

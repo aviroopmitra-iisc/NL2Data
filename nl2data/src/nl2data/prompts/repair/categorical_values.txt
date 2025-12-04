@@ -1,0 +1,49 @@
+You are helping to generate appropriate categorical values for a database column that was not specified in the original natural language description.
+
+## Context
+
+**Table Name**: {table_name}
+**Column Name**: {column_name}
+**Column Type**: {sql_type}
+**Column Role**: {column_role}
+**Is Unique**: {is_unique}
+**Is Nullable**: {is_nullable}
+
+## Schema Context
+
+**Table Description**: {table_description}
+
+**Other Columns in Table**:
+{other_columns}
+
+## Task
+
+Generate a list of realistic categorical values for the column "{column_name}" in the table "{table_name}".
+
+**Requirements**:
+1. Generate 8-15 appropriate categorical values that make sense for this column name and context
+2. Values should be realistic and domain-appropriate
+3. Values should be strings (even if they represent numbers or booleans)
+4. Consider the column name, table context, and other columns when determining appropriate values
+5. If the column appears to be a status, state, type, category, or enum, generate values that match that pattern
+
+**Output Format**:
+Return a JSON object with a "values" array containing the categorical values as strings:
+
+{{
+  "values": ["value1", "value2", "value3", ...]
+}}
+
+**Example**:
+For a column named "status" in a "orders" table:
+{{
+  "values": ["pending", "processing", "shipped", "delivered", "cancelled", "returned"]
+}}
+
+For a column named "country" in a "customers" table:
+{{
+  "values": ["United States", "Canada", "Mexico", "United Kingdom", "Germany", "France", "Japan", "Australia"]
+}}
+
+Now generate values for the column described above:
+

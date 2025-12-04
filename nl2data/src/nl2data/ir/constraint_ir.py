@@ -23,7 +23,15 @@ class ConditionExpr(BaseModel):
 class FDConstraint(BaseModel):
     """Functional dependency constraint."""
 
-    table: str
+    table: str  # Deprecated: kept for backward compatibility, will be removed
+    lhs: List[str]  # determinant columns
+    rhs: List[str]  # dependent columns
+    mode: Literal["intra_row", "lookup"] = "intra_row"
+
+
+class TableFDConstraint(BaseModel):
+    """Functional dependency constraint for a table (without table field)."""
+
     lhs: List[str]  # determinant columns
     rhs: List[str]  # dependent columns
     mode: Literal["intra_row", "lookup"] = "intra_row"
@@ -47,7 +55,7 @@ class CompositePKConstraint(BaseModel):
 class ConstraintSpec(BaseModel):
     """Collection of all constraints for a schema."""
 
-    fds: List[FDConstraint] = Field(default_factory=list)
+    # Note: FDs are now stored per table in TableSpec.fds, not here
     implications: List[ImplicationConstraint] = Field(default_factory=list)
     composite_pks: List[CompositePKConstraint] = Field(default_factory=list)
 

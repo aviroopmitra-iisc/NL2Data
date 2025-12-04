@@ -55,6 +55,18 @@ def validate_logical(ir: DatasetIR) -> List[QaIssue]:
                     details={"table": table_name, "kind": table.kind},
                 )
             )
+        
+        # Check row_count exists (especially important for fact tables)
+        if table.row_count is None:
+            issues.append(
+                QaIssue(
+                    stage="LogicalIR",
+                    code="MISSING_ROW_COUNT",
+                    location=table_name,
+                    message=f"{table_name}: missing row_count. Tables should specify expected row count for data generation.",
+                    details={"table": table_name, "kind": table.kind},
+                )
+            )
 
         # Check primary key columns exist
         for pk_col in table.primary_key:
@@ -770,33 +782,34 @@ def validate_logical_ir(board: "Blackboard") -> List[QaIssue]:
                 )
             )
 
-    # Check FD constraints
-    for fd in board.logical_ir.constraints.fds:
-        if fd.table not in tables:
-            issues.append(
-                QaIssue(
-                    stage="LogicalIR",
-                    code="FD_TABLE_MISSING",
-                    location=fd.table,
-                    message=f"FD constraint references unknown table '{fd.table}'",
-                    details={"table": fd.table, "lhs": fd.lhs, "rhs": fd.rhs},
-                )
-            )
-            continue
-
-        table = tables[fd.table]
-        # Check LHS columns exist
-        for col in fd.lhs:
-            if col not in {c.name for c in table.columns}:
-                issues.append(
-                    QaIssue(
-                        stage="LogicalIR",
-                        code="FD_LHS_COL_MISSING",
-                        location=f"{fd.table}.{col}",
-                        message=f"FD LHS column '{col}' does not exist in table '{fd.table}'",
-                        details={"table": fd.table, "column": col, "lhs": fd.lhs, "rhs": fd.rhs},
+    # Check FD constraints (read from table.fds)
+    for table_name, table_spec in board.logical_ir.tables.items():
+        for fd in table_spec.fds:
+            # Check LHS columns exist
+            for col_name in fd.lhs:
+                if not any(col.name == col_name for col in table_spec.columns):
+                    issues.append(
+                        QaIssue(
+                            stage="LogicalIR",
+                            code="FD_LHS_COL_MISSING",
+                            location=f"{table_name}.{col_name}",
+                            message=f"FD LHS column '{col_name}' does not exist in table '{table_name}'",
+                            details={"table": table_name, "column": col_name, "lhs": fd.lhs, "rhs": fd.rhs},
+                        )
                     )
-                )
+            
+            # Check RHS columns exist
+            for col_name in fd.rhs:
+                if not any(col.name == col_name for col in table_spec.columns):
+                    issues.append(
+                        QaIssue(
+                            stage="LogicalIR",
+                            code="FD_RHS_COL_MISSING",
+                            location=f"{table_name}.{col_name}",
+                            message=f"FD RHS column '{col_name}' does not exist in table '{table_name}'",
+                            details={"table": table_name, "column": col_name, "lhs": fd.lhs, "rhs": fd.rhs},
+                        )
+                    )
         # Check RHS columns exist
         for col in fd.rhs:
             if col not in {c.name for c in table.columns}:
